@@ -30,25 +30,26 @@ resize();
 const WORLD_W = 320;
 const WORLD_H = 220;
 
-const ZOOM = 6.5;
+const BORDER = 5;
 
-const PLAYER_SPEED = 0.22;
-const PLAYER_RADIUS = 2.2;
+// Camera is deliberately close.
+const ZOOM = 10;
+
+const PLAYER_SPEED = 0.075;
+const PLAYER_RADIUS = 1.8;
 
 const player = {
     x: 160,
     y: 110,
 
-    vx: 0,
-    vy: 0,
-
     facing: 1,
 
+    moving: false,
     walkTime: 0,
-    moving: false
+    idleTime: 0
 };
 
-let camera = {
+const camera = {
     x: player.x,
     y: player.y
 };
@@ -72,7 +73,10 @@ window.addEventListener("keydown", e => {
         e.preventDefault();
     }
 
-    if (e.key.toLowerCase() === "e" || e.key === " ") {
+    if (
+        e.key.toLowerCase() === "e" ||
+        e.key === " "
+    ) {
         interact();
     }
 });
@@ -208,13 +212,9 @@ const buildings = [
 
 // ============================================================
 // PATHS
-//
-// These are deliberately connected directly to the building
-// doors rather than just passing vaguely near them.
 // ============================================================
 
 const paths = [
-    // Main horizontal road
     {
         x: 30,
         y: 67,
@@ -222,7 +222,6 @@ const paths = [
         h: 16
     },
 
-    // Main vertical road
     {
         x: 151,
         y: 40,
@@ -230,7 +229,6 @@ const paths = [
         h: 145
     },
 
-    // Left road
     {
         x: 72,
         y: 43,
@@ -238,7 +236,6 @@ const paths = [
         h: 135
     },
 
-    // Right road
     {
         x: 244,
         y: 48,
@@ -246,7 +243,6 @@ const paths = [
         h: 145
     },
 
-    // Lower horizontal road
     {
         x: 70,
         y: 145,
@@ -254,7 +250,6 @@ const paths = [
         h: 16
     },
 
-    // Reactor door connection
     {
         x: 50,
         y: 96,
@@ -262,7 +257,6 @@ const paths = [
         h: 16
     },
 
-    // Electrical door connection
     {
         x: 108,
         y: 95,
@@ -270,7 +264,6 @@ const paths = [
         h: 16
     },
 
-    // Admin door connection
     {
         x: 230,
         y: 91,
@@ -278,7 +271,6 @@ const paths = [
         h: 16
     },
 
-    // Navigation door connection
     {
         x: 248,
         y: 91,
@@ -286,7 +278,6 @@ const paths = [
         h: 16
     },
 
-    // O2 connection
     {
         x: 257,
         y: 110,
@@ -294,7 +285,6 @@ const paths = [
         h: 35
     },
 
-    // Communications connection
     {
         x: 270,
         y: 150,
@@ -302,7 +292,6 @@ const paths = [
         h: 40
     },
 
-    // Storage connection
     {
         x: 180,
         y: 145,
@@ -310,7 +299,6 @@ const paths = [
         h: 25
     },
 
-    // Lower Engine connection
     {
         x: 125,
         y: 145,
@@ -318,7 +306,6 @@ const paths = [
         h: 28
     },
 
-    // Security connection
     {
         x: 64,
         y: 145,
@@ -326,7 +313,6 @@ const paths = [
         h: 20
     },
 
-    // Cafeteria direct bottom connection
     {
         x: 151,
         y: 116,
@@ -334,7 +320,6 @@ const paths = [
         h: 29
     },
 
-    // MedBay direct bottom connection
     {
         x: 67,
         y: 57,
@@ -342,7 +327,6 @@ const paths = [
         h: 26
     },
 
-    // Upper Engine direct bottom connection
     {
         x: 124,
         y: 50,
@@ -350,7 +334,6 @@ const paths = [
         h: 33
     },
 
-    // Weapons direct bottom connection
     {
         x: 232,
         y: 57,
@@ -361,7 +344,7 @@ const paths = [
 
 
 // ============================================================
-// COLLISION WALLS
+// WALLS
 // ============================================================
 
 const walls = [];
@@ -395,7 +378,7 @@ function makeBuildingWalls(b) {
         );
     }
 
-    else if (b.door === "top") {
+    if (b.door === "top") {
         addWall(b.x, b.y + b.h - 2, b.w, 2);
         addWall(b.x, b.y, 2, b.h);
         addWall(b.x + b.w - 2, b.y, 2, b.h);
@@ -417,7 +400,7 @@ function makeBuildingWalls(b) {
         );
     }
 
-    else if (b.door === "left") {
+    if (b.door === "left") {
         addWall(b.x, b.y, b.w, 2);
         addWall(b.x, b.y + b.h - 2, b.w, 2);
         addWall(b.x + b.w - 2, b.y, 2, b.h);
@@ -439,7 +422,7 @@ function makeBuildingWalls(b) {
         );
     }
 
-    else if (b.door === "right") {
+    if (b.door === "right") {
         addWall(b.x, b.y, b.w, 2);
         addWall(b.x, b.y + b.h - 2, b.w, 2);
         addWall(b.x, b.y, 2, b.h);
@@ -462,25 +445,46 @@ function makeBuildingWalls(b) {
     }
 }
 
-for (const b of buildings) {
-    makeBuildingWalls(b);
+for (const building of buildings) {
+    makeBuildingWalls(building);
 }
 
 
 // ============================================================
-// WORLD BORDER
+// HARD WORLD BARRIER
 // ============================================================
 
-const BORDER = 5;
+addWall(
+    0,
+    0,
+    WORLD_W,
+    BORDER
+);
 
-addWall(0, 0, WORLD_W, BORDER);
-addWall(0, WORLD_H - BORDER, WORLD_W, BORDER);
-addWall(0, 0, BORDER, WORLD_H);
-addWall(WORLD_W - BORDER, 0, BORDER, WORLD_H);
+addWall(
+    0,
+    WORLD_H - BORDER,
+    WORLD_W,
+    BORDER
+);
+
+addWall(
+    0,
+    0,
+    BORDER,
+    WORLD_H
+);
+
+addWall(
+    WORLD_W - BORDER,
+    0,
+    BORDER,
+    WORLD_H
+);
 
 
 // ============================================================
-// TASK POOLS
+// TASKS
 // ============================================================
 
 const shortTasks = [
@@ -633,31 +637,32 @@ const longTasks = [
     }
 ];
 
-
-// ============================================================
-// RANDOM TASK SELECTION
-// ============================================================
-
 function shuffle(array) {
     const result = [...array];
 
     for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(
+            Math.random() * (i + 1)
+        );
 
-        [result[i], result[j]] =
-            [result[j], result[i]];
+        [
+            result[i],
+            result[j]
+        ] = [
+            result[j],
+            result[i]
+        ];
     }
 
     return result;
 }
 
-function chooseTasks(pool, amount) {
+function selectTasks(pool, count) {
     return shuffle(pool)
-        .slice(0, amount)
+        .slice(0, count)
         .map(task => ({
             ...task,
             completed: false,
-            progress: 0,
             active: false
         }));
 }
@@ -665,154 +670,56 @@ function chooseTasks(pool, amount) {
 let selectedTasks = [];
 
 function generateTasks() {
-    const shorts = chooseTasks(shortTasks, 3);
-    const mediums = chooseTasks(mediumTasks, 3);
-    const longs = chooseTasks(longTasks, 1);
-
     selectedTasks = [
-        ...shorts,
-        ...mediums,
-        ...longs
+        ...selectTasks(shortTasks, 3),
+        ...selectTasks(mediumTasks, 3),
+        ...selectTasks(longTasks, 1)
     ];
 
-    shuffle(selectedTasks);
+    selectedTasks =
+        shuffle(selectedTasks);
 }
 
 generateTasks();
 
-
-// ============================================================
-// TASK STATE
-// ============================================================
-
 let currentTask = null;
 let taskProgress = 0;
-
-function distance(a, b) {
-    return Math.hypot(
-        a.x - b.x,
-        a.y - b.y
-    );
-}
-
-function interact() {
-    if (currentTask) {
-        return;
-    }
-
-    let closest = null;
-    let closestDistance = Infinity;
-
-    for (const task of selectedTasks) {
-        if (task.completed) {
-            continue;
-        }
-
-        const d = distance(player, task);
-
-        if (d < closestDistance) {
-            closest = task;
-            closestDistance = d;
-        }
-    }
-
-    if (closest && closestDistance < 6) {
-        currentTask = closest;
-        currentTask.active = true;
-        taskProgress = 0;
-    }
-}
-
-
-// ============================================================
-// DECORATION
-// ============================================================
-
-const trees = [];
-const rocks = [];
-
-function randomDecor() {
-    trees.length = 0;
-    rocks.length = 0;
-
-    for (let i = 0; i < 130; i++) {
-        const x = 8 + Math.random() * (WORLD_W - 16);
-        const y = 8 + Math.random() * (WORLD_H - 16);
-
-        let insideBuilding = false;
-        let insidePath = false;
-
-        for (const b of buildings) {
-            if (
-                x > b.x - 5 &&
-                x < b.x + b.w + 5 &&
-                y > b.y - 5 &&
-                y < b.y + b.h + 5
-            ) {
-                insideBuilding = true;
-                break;
-            }
-        }
-
-        if (!insideBuilding) {
-            for (const p of paths) {
-                if (
-                    x > p.x - 3 &&
-                    x < p.x + p.w + 3 &&
-                    y > p.y - 3 &&
-                    y < p.y + p.h + 3
-                ) {
-                    insidePath = true;
-                    break;
-                }
-            }
-        }
-
-        if (!insideBuilding && !insidePath) {
-            trees.push({
-                x,
-                y,
-                size: 1.2 + Math.random() * 1.5,
-                phase: Math.random() * Math.PI * 2
-            });
-        }
-    }
-
-    for (let i = 0; i < 90; i++) {
-        const x = 7 + Math.random() * (WORLD_W - 14);
-        const y = 7 + Math.random() * (WORLD_H - 14);
-
-        rocks.push({
-            x,
-            y,
-            size: 0.4 + Math.random() * 1.2,
-            rotation: Math.random() * Math.PI
-        });
-    }
-}
-
-randomDecor();
 
 
 // ============================================================
 // COLLISION
 // ============================================================
 
-function circleRectCollision(cx, cy, radius, rect) {
+function circleRectCollision(
+    cx,
+    cy,
+    radius,
+    rect
+) {
     const closestX = Math.max(
         rect.x,
-        Math.min(cx, rect.x + rect.w)
+        Math.min(
+            cx,
+            rect.x + rect.w
+        )
     );
 
     const closestY = Math.max(
         rect.y,
-        Math.min(cy, rect.y + rect.h)
+        Math.min(
+            cy,
+            rect.y + rect.h
+        )
     );
 
     const dx = cx - closestX;
     const dy = cy - closestY;
 
-    return dx * dx + dy * dy < radius * radius;
+    return (
+        dx * dx +
+        dy * dy <
+        radius * radius
+    );
 }
 
 function canMoveTo(x, y) {
@@ -832,1672 +739,9 @@ function canMoveTo(x, y) {
     return true;
 }
 
-function movePlayer(dx, dy) {
-    const nextX = player.x + dx;
-
-    if (canMoveTo(nextX, player.y)) {
-        player.x = nextX;
-    }
-
-    const nextY = player.y + dy;
-
-    if (canMoveTo(player.x, nextY)) {
-        player.y = nextY;
-    }
-}
-
 
 // ============================================================
-// CAMERA
-// ============================================================
-
-function updateCamera() {
-    const targetX = player.x;
-    const targetY = player.y;
-
-    camera.x +=
-        (targetX - camera.x) * 0.14;
-
-    camera.y +=
-        (targetY - camera.y) * 0.14;
-}
-
-function worldToScreen(x, y) {
-    return {
-        x: (x - camera.x) * ZOOM + W / 2,
-        y: (y - camera.y) * ZOOM + H / 2
-    };
-}
-
-
-// ============================================================
-// BACKGROUND / SPACE
-// ============================================================
-
-function drawSpace() {
-    const gradient = ctx.createRadialGradient(
-        W / 2,
-        H / 2,
-        0,
-        W / 2,
-        H / 2,
-        Math.max(W, H)
-    );
-
-    gradient.addColorStop(0, "#14192b");
-    gradient.addColorStop(0.55, "#090c19");
-    gradient.addColorStop(1, "#030409");
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, W, H);
-
-    // stars
-    ctx.save();
-
-    for (let i = 0; i < 100; i++) {
-        const sx =
-            ((i * 173.31) % W + W) % W;
-
-        const sy =
-            ((i * 97.71) % H + H) % H;
-
-        const pulse =
-            0.45 +
-            Math.sin(gameTime * 1.5 + i) * 0.2;
-
-        ctx.globalAlpha = Math.max(
-            0.15,
-            pulse
-        );
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.beginPath();
-        ctx.arc(
-            sx,
-            sy,
-            i % 5 === 0 ? 1.3 : 0.7,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-    }
-
-    ctx.restore();
-
-    // Planet atmosphere behind world
-    const planet = worldToScreen(
-        WORLD_W / 2,
-        WORLD_H / 2
-    );
-
-    const planetRadius =
-        Math.max(W, H) * 0.8;
-
-    const glow = ctx.createRadialGradient(
-        planet.x,
-        planet.y,
-        planetRadius * 0.65,
-        planet.x,
-        planet.y,
-        planetRadius
-    );
-
-    glow.addColorStop(0, "rgba(70,130,160,0)");
-    glow.addColorStop(0.75, "rgba(70,150,190,0.05)");
-    glow.addColorStop(1, "rgba(100,190,220,0.2)");
-
-    ctx.fillStyle = glow;
-
-    ctx.beginPath();
-    ctx.arc(
-        planet.x,
-        planet.y,
-        planetRadius,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-}
-
-
-// ============================================================
-// PLANET GROUND
-// ============================================================
-
-function drawGround() {
-    const topLeft = worldToScreen(0, 0);
-    const bottomRight =
-        worldToScreen(WORLD_W, WORLD_H);
-
-    ctx.save();
-
-    ctx.fillStyle = "#334b38";
-
-    ctx.fillRect(
-        topLeft.x,
-        topLeft.y,
-        bottomRight.x - topLeft.x,
-        bottomRight.y - topLeft.y
-    );
-
-    // Ground variation
-    ctx.globalAlpha = 0.15;
-
-    for (let x = 0; x < WORLD_W; x += 4) {
-        for (let y = 0; y < WORLD_H; y += 4) {
-            const noise =
-                Math.sin(x * 12.3 + y * 4.7);
-
-            if (noise > 0.2) {
-                const p = worldToScreen(x, y);
-
-                ctx.fillStyle =
-                    noise > 0.7
-                        ? "#8fa35d"
-                        : "#263d2d";
-
-                ctx.fillRect(
-                    p.x,
-                    p.y,
-                    ZOOM * 0.5,
-                    ZOOM * 0.5
-                );
-            }
-        }
-    }
-
-    ctx.globalAlpha = 1;
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// PATHS
-// ============================================================
-
-function drawPaths() {
-    ctx.save();
-
-    for (const p of paths) {
-        const s = worldToScreen(p.x, p.y);
-
-        ctx.fillStyle = "#687278";
-
-        ctx.fillRect(
-            s.x,
-            s.y,
-            p.w * ZOOM,
-            p.h * ZOOM
-        );
-
-        ctx.fillStyle = "#798187";
-
-        ctx.globalAlpha = 0.35;
-
-        ctx.fillRect(
-            s.x,
-            s.y,
-            p.w * ZOOM,
-            1.2 * ZOOM
-        );
-
-        ctx.globalAlpha = 1;
-
-        // small path markings
-        ctx.strokeStyle = "rgba(30,35,38,0.25)";
-        ctx.lineWidth = 0.8 * ZOOM;
-
-        for (
-            let x = p.x + 4;
-            x < p.x + p.w;
-            x += 8
-        ) {
-            const a = worldToScreen(
-                x,
-                p.y + p.h / 2
-            );
-
-            ctx.beginPath();
-
-            ctx.moveTo(
-                a.x,
-                a.y
-            );
-
-            ctx.lineTo(
-                a.x + 2 * ZOOM,
-                a.y
-            );
-
-            ctx.stroke();
-        }
-    }
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// TREES
-// ============================================================
-
-function drawTrees() {
-    ctx.save();
-
-    for (const tree of trees) {
-        const p = worldToScreen(
-            tree.x,
-            tree.y
-        );
-
-        const sway =
-            Math.sin(
-                gameTime * 1.5 +
-                tree.phase
-            ) * 1.2;
-
-        const s = tree.size * ZOOM;
-
-        // shadow
-        ctx.fillStyle =
-            "rgba(0,0,0,0.22)";
-
-        ctx.beginPath();
-
-        ctx.ellipse(
-            p.x,
-            p.y + s * 0.5,
-            s * 0.9,
-            s * 0.3,
-            0,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-
-        // trunk
-        ctx.fillStyle = "#554331";
-
-        ctx.fillRect(
-            p.x - s * 0.12,
-            p.y - s * 0.2,
-            s * 0.24,
-            s * 0.75
-        );
-
-        // leaves
-        ctx.fillStyle = "#1f5a3b";
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x + sway,
-            p.y - s * 0.35,
-            s * 0.55,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-
-        ctx.fillStyle = "#34734b";
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x - s * 0.25 + sway,
-            p.y - s * 0.5,
-            s * 0.38,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-    }
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// ROCKS
-// ============================================================
-
-function drawRocks() {
-    ctx.save();
-
-    for (const rock of rocks) {
-        const p = worldToScreen(
-            rock.x,
-            rock.y
-        );
-
-        const s = rock.size * ZOOM;
-
-        ctx.save();
-
-        ctx.translate(p.x, p.y);
-        ctx.rotate(rock.rotation);
-
-        ctx.fillStyle = "#4b5550";
-
-        ctx.beginPath();
-
-        ctx.moveTo(-s, 0);
-        ctx.lineTo(-s * 0.45, -s * 0.7);
-        ctx.lineTo(s * 0.55, -s * 0.6);
-        ctx.lineTo(s, s * 0.15);
-        ctx.lineTo(s * 0.3, s * 0.7);
-        ctx.lineTo(-s * 0.7, s * 0.55);
-
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle =
-            "rgba(255,255,255,0.12)";
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-            -s * 0.4,
-            -s * 0.35
-        );
-
-        ctx.lineTo(
-            s * 0.35,
-            -s * 0.3
-        );
-
-        ctx.lineTo(
-            s * 0.1,
-            -s * 0.05
-        );
-
-        ctx.closePath();
-
-        ctx.fill();
-
-        ctx.restore();
-    }
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// BUILDINGS
-// ============================================================
-
-function drawBuildingInterior(b) {
-    const x = b.x;
-    const y = b.y;
-    const w = b.w;
-    const h = b.h;
-
-    const p = worldToScreen(x, y);
-
-    ctx.save();
-
-    // Interior floor
-    ctx.fillStyle = "#252b2f";
-
-    ctx.fillRect(
-        p.x + 2 * ZOOM,
-        p.y + 2 * ZOOM,
-        (w - 4) * ZOOM,
-        (h - 4) * ZOOM
-    );
-
-    // Floor panels
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.035)";
-
-    ctx.lineWidth = 0.6 * ZOOM;
-
-    for (let xx = x + 5; xx < x + w; xx += 6) {
-        const a = worldToScreen(xx, y + 2);
-        const c = worldToScreen(xx, y + h - 2);
-
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(c.x, c.y);
-        ctx.stroke();
-    }
-
-    for (let yy = y + 5; yy < y + h; yy += 6) {
-        const a = worldToScreen(x + 2, yy);
-        const c = worldToScreen(x + w - 2, yy);
-
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(c.x, c.y);
-        ctx.stroke();
-    }
-
-    drawRoomFurniture(b);
-
-    ctx.restore();
-}
-
-
-function drawRoomFurniture(b) {
-    const p = worldToScreen(b.x, b.y);
-
-    const sx = ZOOM;
-
-    function rect(x, y, w, h, color) {
-        ctx.fillStyle = color;
-
-        ctx.fillRect(
-            p.x + x * sx,
-            p.y + y * sx,
-            w * sx,
-            h * sx
-        );
-    }
-
-    function circle(x, y, r, color) {
-        ctx.fillStyle = color;
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x + x * sx,
-            p.y + y * sx,
-            r * sx,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-    }
-
-    switch (b.name) {
-
-        case "CAFETERIA":
-            for (const pos of [
-                [10, 9],
-                [28, 9],
-                [10, 25],
-                [28, 25],
-                [44, 17]
-            ]) {
-                circle(
-                    pos[0],
-                    pos[1],
-                    3,
-                    "#566068"
-                );
-
-                circle(
-                    pos[0],
-                    pos[1],
-                    1.2,
-                    "#80898d"
-                );
-            }
-
-            rect(
-                3,
-                3,
-                50,
-                3,
-                "#424a4f"
-            );
-
-            break;
-
-
-        case "MEDBAY":
-            rect(
-                6,
-                7,
-                12,
-                5,
-                "#a9b7b8"
-            );
-
-            rect(
-                24,
-                7,
-                12,
-                5,
-                "#a9b7b8"
-            );
-
-            rect(
-                6,
-                21,
-                12,
-                5,
-                "#a9b7b8"
-            );
-
-            rect(
-                24,
-                21,
-                12,
-                5,
-                "#a9b7b8"
-            );
-
-            circle(
-                20,
-                15,
-                3,
-                "#55a8a0"
-            );
-
-            break;
-
-
-        case "UPPER ENGINE":
-        case "LOWER ENGINE":
-            for (let i = 0; i < 3; i++) {
-                rect(
-                    7 + i * 11,
-                    6,
-                    7,
-                    18,
-                    "#414a4f"
-                );
-
-                circle(
-                    10.5 + i * 11,
-                    15,
-                    2.2,
-                    "#6d8c91"
-                );
-            }
-
-            break;
-
-
-        case "WEAPONS":
-            rect(
-                6,
-                7,
-                30,
-                5,
-                "#454f54"
-            );
-
-            rect(
-                12,
-                17,
-                18,
-                7,
-                "#30383c"
-            );
-
-            circle(
-                21,
-                20,
-                2.5,
-                "#68a8b5"
-            );
-
-            break;
-
-
-        case "REACTOR":
-            circle(
-                23,
-                18,
-                9,
-                "#39464a"
-            );
-
-            circle(
-                23,
-                18,
-                6,
-                "#507f84"
-            );
-
-            circle(
-                23,
-                18,
-                2.5,
-                "#a3e3d7"
-            );
-
-            break;
-
-
-        case "ELECTRICAL":
-            for (let i = 0; i < 3; i++) {
-                rect(
-                    5 + i * 11,
-                    8,
-                    8,
-                    18,
-                    "#444d50"
-                );
-
-                circle(
-                    9 + i * 11,
-                    13,
-                    1.5,
-                    "#a8bd72"
-                );
-
-                circle(
-                    9 + i * 11,
-                    20,
-                    1.5,
-                    "#c28c61"
-                );
-            }
-
-            break;
-
-
-        case "SECURITY":
-            for (let i = 0; i < 3; i++) {
-                rect(
-                    5 + i * 12,
-                    7,
-                    9,
-                    7,
-                    "#1a3036"
-                );
-            }
-
-            rect(
-                9,
-                19,
-                25,
-                5,
-                "#3e484d"
-            );
-
-            break;
-
-
-        case "STORAGE":
-            for (let yy = 6; yy < 30; yy += 8) {
-                for (let xx = 5; xx < 43; xx += 10) {
-                    rect(
-                        xx,
-                        yy,
-                        7,
-                        6,
-                        "#675c49"
-                    );
-                }
-            }
-
-            break;
-
-
-        case "ADMIN":
-            rect(
-                7,
-                8,
-                26,
-                6,
-                "#3b484c"
-            );
-
-            rect(
-                10,
-                20,
-                20,
-                5,
-                "#455257"
-            );
-
-            break;
-
-
-        case "NAVIGATION":
-            rect(
-                5,
-                8,
-                30,
-                8,
-                "#243a42"
-            );
-
-            circle(
-                20,
-                12,
-                4,
-                "#68a5b0"
-            );
-
-            rect(
-                11,
-                23,
-                18,
-                5,
-                "#48555b"
-            );
-
-            break;
-
-
-        case "O2":
-            for (let i = 0; i < 3; i++) {
-                circle(
-                    10 + i * 9,
-                    17,
-                    4,
-                    "#4d6769"
-                );
-
-                circle(
-                    10 + i * 9,
-                    17,
-                    2.5,
-                    "#709a99"
-                );
-            }
-
-            break;
-
-
-        case "COMMUNICATIONS":
-            rect(
-                6,
-                8,
-                27,
-                6,
-                "#39464b"
-            );
-
-            rect(
-                10,
-                19,
-                19,
-                5,
-                "#48555a"
-            );
-
-            break;
-    }
-}
-
-
-function drawBuildings() {
-    for (const b of buildings) {
-        const p = worldToScreen(
-            b.x,
-            b.y
-        );
-
-        // Building shadow
-        ctx.fillStyle =
-            "rgba(0,0,0,0.32)";
-
-        ctx.fillRect(
-            p.x + 2 * ZOOM,
-            p.y + 3 * ZOOM,
-            b.w * ZOOM,
-            b.h * ZOOM
-        );
-
-        // Building shell
-        ctx.fillStyle = "#394247";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            b.w * ZOOM,
-            b.h * ZOOM
-        );
-
-        drawBuildingInterior(b);
-
-        // roof
-        ctx.fillStyle = "#566168";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            b.w * ZOOM,
-            3 * ZOOM
-        );
-
-        // roof highlights
-        ctx.fillStyle =
-            "rgba(255,255,255,0.08)";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            b.w * ZOOM,
-            0.8 * ZOOM
-        );
-
-        // windows
-        ctx.fillStyle = "#1c363e";
-
-        for (let wx = b.x + 5; wx < b.x + b.w - 4; wx += 8) {
-            const win = worldToScreen(
-                wx,
-                b.y + 2
-            );
-
-            ctx.fillRect(
-                win.x,
-                win.y,
-                4 * ZOOM,
-                1.5 * ZOOM
-            );
-        }
-
-        // door
-        drawDoor(b);
-
-        // label
-        ctx.save();
-
-        ctx.font =
-            `bold ${Math.max(8, 2.3 * ZOOM)}px Arial`;
-
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-
-        ctx.fillStyle =
-            "rgba(255,255,255,0.78)";
-
-        ctx.fillText(
-            b.name,
-            p.x + b.w * ZOOM / 2,
-            p.y - 1 * ZOOM
-        );
-
-        ctx.restore();
-    }
-}
-
-
-function drawDoor(b) {
-    let dx = b.x;
-    let dy = b.y;
-
-    const dw = 9;
-    const dh = 3;
-
-    if (b.door === "bottom") {
-        dx = b.x + b.w / 2 - dw / 2;
-        dy = b.y + b.h - 2;
-    }
-
-    if (b.door === "top") {
-        dx = b.x + b.w / 2 - dw / 2;
-        dy = b.y - 1;
-    }
-
-    if (b.door === "left") {
-        dx = b.x - 1;
-        dy = b.y + b.h / 2 - dw / 2;
-    }
-
-    if (b.door === "right") {
-        dx = b.x + b.w - 2;
-        dy = b.y + b.h / 2 - dw / 2;
-    }
-
-    const p = worldToScreen(dx, dy);
-
-    ctx.fillStyle = "#82d6c2";
-
-    if (
-        b.door === "bottom" ||
-        b.door === "top"
-    ) {
-        ctx.fillRect(
-            p.x,
-            p.y,
-            dw * ZOOM,
-            dh * ZOOM
-        );
-    } else {
-        ctx.fillRect(
-            p.x,
-            p.y,
-            dh * ZOOM,
-            dw * ZOOM
-        );
-    }
-
-    ctx.fillStyle =
-        "rgba(255,255,255,0.35)";
-
-    if (
-        b.door === "bottom" ||
-        b.door === "top"
-    ) {
-        ctx.fillRect(
-            p.x,
-            p.y,
-            dw * ZOOM,
-            0.5 * ZOOM
-        );
-    } else {
-        ctx.fillRect(
-            p.x,
-            p.y,
-            0.5 * ZOOM,
-            dw * ZOOM
-        );
-    }
-}
-
-
-// ============================================================
-// WORLD BARRIER
-// ============================================================
-
-function drawBarrier() {
-    const top = worldToScreen(0, 0);
-    const bottom =
-        worldToScreen(WORLD_W, WORLD_H);
-
-    ctx.save();
-
-    ctx.strokeStyle =
-        "rgba(85,220,255,0.85)";
-
-    ctx.shadowColor =
-        "rgba(60,210,255,0.8)";
-
-    ctx.shadowBlur = 14;
-
-    ctx.lineWidth =
-        1.5 * ZOOM;
-
-    ctx.strokeRect(
-        top.x,
-        top.y,
-        bottom.x - top.x,
-        bottom.y - top.y
-    );
-
-    ctx.shadowBlur = 0;
-
-    ctx.strokeStyle =
-        "rgba(150,240,255,0.35)";
-
-    ctx.lineWidth =
-        0.6 * ZOOM;
-
-    const pulse =
-        Math.sin(gameTime * 3) * 0.5 + 0.5;
-
-    ctx.globalAlpha =
-        0.25 + pulse * 0.45;
-
-    ctx.strokeRect(
-        top.x + 1.5 * ZOOM,
-        top.y + 1.5 * ZOOM,
-        bottom.x - top.x - 3 * ZOOM,
-        bottom.y - top.y - 3 * ZOOM
-    );
-
-    ctx.restore();
-
-    // Barrier warning markings
-    ctx.save();
-
-    ctx.fillStyle =
-        "rgba(120,220,255,0.7)";
-
-    const spacing = 8;
-
-    for (
-        let x = BORDER;
-        x < WORLD_W - BORDER;
-        x += spacing
-    ) {
-        const a = worldToScreen(
-            x,
-            BORDER
-        );
-
-        ctx.fillRect(
-            a.x,
-            a.y,
-            2 * ZOOM,
-            0.6 * ZOOM
-        );
-
-        const b = worldToScreen(
-            x,
-            WORLD_H - BORDER
-        );
-
-        ctx.fillRect(
-            b.x,
-            b.y,
-            2 * ZOOM,
-            0.6 * ZOOM
-        );
-    }
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// TASK MARKERS
-// ============================================================
-
-function drawTaskMarkers() {
-    for (const task of selectedTasks) {
-        if (task.completed) {
-            continue;
-        }
-
-        const p = worldToScreen(
-            task.x,
-            task.y
-        );
-
-        const pulse =
-            Math.sin(gameTime * 4 + task.x) *
-            0.15 +
-            1;
-
-        const nearby =
-            distance(player, task) < 6;
-
-        ctx.save();
-
-        ctx.globalAlpha =
-            nearby ? 1 : 0.72;
-
-        ctx.fillStyle =
-            task.time <= 2.5
-                ? "#5cff83"
-                : task.time <= 5
-                    ? "#ffd75c"
-                    : "#ff705c";
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x,
-            p.y,
-            2.1 * ZOOM * pulse,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.beginPath();
-
-        ctx.arc(
-            p.x,
-            p.y,
-            0.65 * ZOOM,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-
-        if (nearby) {
-            ctx.font =
-                `bold ${2.1 * ZOOM}px Arial`;
-
-            ctx.textAlign = "center";
-
-            ctx.fillStyle = "#ffffff";
-
-            ctx.fillText(
-                "E",
-                p.x,
-                p.y - 3.5 * ZOOM
-            );
-        }
-
-        ctx.restore();
-    }
-}
-
-
-// ============================================================
-// PLAYER
-// ============================================================
-
-function drawPlayer() {
-    const p = worldToScreen(
-        player.x,
-        player.y
-    );
-
-    const moving = player.moving;
-
-    const bob =
-        moving
-            ? Math.sin(player.walkTime * 12) * 0.7
-            : Math.sin(gameTime * 2) * 0.15;
-
-    const leg =
-        moving
-            ? Math.sin(player.walkTime * 12) * 0.8
-            : 0;
-
-    const s = ZOOM;
-
-    ctx.save();
-
-    ctx.translate(
-        p.x,
-        p.y + bob * s
-    );
-
-    // Shadow
-    ctx.save();
-
-    ctx.globalAlpha = 0.3;
-
-    ctx.fillStyle = "#000000";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        0,
-        2.9 * s,
-        2.5 * s,
-        0.8 * s,
-        0,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    ctx.restore();
-
-
-    // backpack
-    ctx.fillStyle = "#a82730";
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -2.6 * s,
-        -2.2 * s,
-        1.8 * s,
-        4.5 * s,
-        0.8 * s
-    );
-
-    ctx.fill();
-
-
-    // legs
-    ctx.fillStyle = "#8e2028";
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -1.5 * s + leg * s * 0.35,
-        1.1 * s,
-        1.25 * s,
-        2.0 * s,
-        0.55 * s
-    );
-
-    ctx.fill();
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        0.25 * s - leg * s * 0.35,
-        1.1 * s,
-        1.25 * s,
-        2.0 * s,
-        0.55 * s
-    );
-
-    ctx.fill();
-
-
-    // body
-    ctx.fillStyle = "#d93643";
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -2.0 * s,
-        -3.3 * s,
-        4.0 * s,
-        5.8 * s,
-        1.7 * s
-    );
-
-    ctx.fill();
-
-
-    // body highlight
-    ctx.fillStyle =
-        "rgba(255,255,255,0.10)";
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -1.55 * s,
-        -2.7 * s,
-        0.7 * s,
-        3.4 * s,
-        0.35 * s
-    );
-
-    ctx.fill();
-
-
-    // visor
-    const visorOffset =
-        player.facing > 0
-            ? 0.35
-            : -0.35;
-
-    ctx.fillStyle = "#142e3c";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        visorOffset * s,
-        -1.75 * s,
-        1.65 * s,
-        1.05 * s,
-        0,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    ctx.fillStyle = "#8de0f1";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        (visorOffset + 0.35) * s,
-        -2.0 * s,
-        0.95 * s,
-        0.43 * s,
-        -0.15,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    // visor shine
-    ctx.fillStyle =
-        "rgba(255,255,255,0.45)";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        (visorOffset + 0.65) * s,
-        -2.15 * s,
-        0.3 * s,
-        0.12 * s,
-        -0.15,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// TASK PANEL
-// ============================================================
-
-function drawTaskUI() {
-    const completed =
-        selectedTasks.filter(t => t.completed).length;
-
-    const total = selectedTasks.length;
-
-    ctx.save();
-
-    // top task counter
-    const panelW = 250;
-    const panelH = 74;
-
-    ctx.fillStyle =
-        "rgba(8,12,16,0.82)";
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.14)";
-
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        16,
-        16,
-        panelW,
-        panelH,
-        10
-    );
-
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.font =
-        "bold 15px Arial";
-
-    ctx.fillStyle = "#ffffff";
-
-    ctx.textAlign = "left";
-
-    ctx.fillText(
-        "TASKS",
-        30,
-        38
-    );
-
-    ctx.font =
-        "13px Arial";
-
-    ctx.fillStyle =
-        "#aeb8bd";
-
-    ctx.fillText(
-        `${completed} / ${total} completed`,
-        30,
-        58
-    );
-
-    // progress bar
-    ctx.fillStyle =
-        "rgba(255,255,255,0.1)";
-
-    ctx.fillRect(
-        30,
-        64,
-        210,
-        7
-    );
-
-    ctx.fillStyle = "#69d98c";
-
-    ctx.fillRect(
-        30,
-        64,
-        210 * (completed / total),
-        7
-    );
-
-
-    // selected tasks list
-    let y = 112;
-
-    ctx.font = "12px Arial";
-
-    for (const task of selectedTasks) {
-        ctx.fillStyle =
-            task.completed
-                ? "#69d98c"
-                : "#ffffff";
-
-        ctx.fillText(
-            task.completed
-                ? "✓ " + task.name
-                : "• " + task.name,
-            20,
-            y
-        );
-
-        y += 17;
-    }
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// INTERACTION UI
-// ============================================================
-
-function drawInteractionUI() {
-    if (currentTask) {
-        drawTaskProgress();
-        return;
-    }
-
-    let closest = null;
-    let closestDistance = Infinity;
-
-    for (const task of selectedTasks) {
-        if (task.completed) {
-            continue;
-        }
-
-        const d = distance(player, task);
-
-        if (d < closestDistance) {
-            closest = task;
-            closestDistance = d;
-        }
-    }
-
-    if (
-        closest &&
-        closestDistance < 6
-    ) {
-        ctx.save();
-
-        const boxW = 270;
-        const boxH = 48;
-
-        const x =
-            W / 2 - boxW / 2;
-
-        const y =
-            H - 82;
-
-        ctx.fillStyle =
-            "rgba(8,12,16,0.9)";
-
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.2)";
-
-        ctx.beginPath();
-
-        ctx.roundRect(
-            x,
-            y,
-            boxW,
-            boxH,
-            10
-        );
-
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.font =
-            "bold 14px Arial";
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.textAlign = "center";
-
-        ctx.fillText(
-            `Press E to ${closest.name}`,
-            W / 2,
-            y + 29
-        );
-
-        ctx.restore();
-    }
-}
-
-
-function drawTaskProgress() {
-    const boxW = 360;
-    const boxH = 110;
-
-    const x =
-        W / 2 - boxW / 2;
-
-    const y =
-        H / 2 - boxH / 2;
-
-    ctx.save();
-
-    ctx.fillStyle =
-        "rgba(7,10,14,0.95)";
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.2)";
-
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        x,
-        y,
-        boxW,
-        boxH,
-        14
-    );
-
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.font =
-        "bold 18px Arial";
-
-    ctx.textAlign = "center";
-
-    ctx.fillStyle = "#ffffff";
-
-    ctx.fillText(
-        currentTask.name,
-        W / 2,
-        y + 34
-    );
-
-    ctx.font =
-        "12px Arial";
-
-    ctx.fillStyle =
-        "#aeb8bd";
-
-    ctx.fillText(
-        "Completing task...",
-        W / 2,
-        y + 55
-    );
-
-    // progress background
-    ctx.fillStyle =
-        "rgba(255,255,255,0.1)";
-
-    ctx.fillRect(
-        x + 35,
-        y + 73,
-        boxW - 70,
-        12
-    );
-
-    ctx.fillStyle =
-        currentTask.time <= 2.5
-            ? "#5cff83"
-            : currentTask.time <= 5
-                ? "#ffd75c"
-                : "#ff705c";
-
-    ctx.fillRect(
-        x + 35,
-        y + 73,
-        (boxW - 70) *
-            Math.min(
-                1,
-                taskProgress /
-                currentTask.time
-            ),
-        12
-    );
-
-    ctx.font =
-        "11px Arial";
-
-    ctx.fillStyle = "#9aa4a9";
-
-    ctx.fillText(
-        "Press E to cancel",
-        W / 2,
-        y + 101
-    );
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// MINI COMPASS
-// ============================================================
-
-function drawCompass() {
-    ctx.save();
-
-    const cx = W - 75;
-    const cy = 55;
-
-    ctx.fillStyle =
-        "rgba(8,12,16,0.72)";
-
-    ctx.beginPath();
-
-    ctx.arc(
-        cx,
-        cy,
-        30,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    ctx.strokeStyle =
-        "rgba(255,255,255,0.15)";
-
-    ctx.stroke();
-
-    ctx.font =
-        "bold 10px Arial";
-
-    ctx.textAlign = "center";
-
-    ctx.fillStyle = "#aeb8bd";
-
-    ctx.fillText("N", cx, cy - 19);
-    ctx.fillText("S", cx, cy + 23);
-    ctx.fillText("W", cx - 20, cy + 4);
-    ctx.fillText("E", cx + 20, cy + 4);
-
-    ctx.restore();
-}
-
-
-// ============================================================
-// PLAYER MOVEMENT
+// SMOOTH MOVEMENT
 // ============================================================
 
 function updatePlayer(dt) {
@@ -2537,84 +781,163 @@ function updatePlayer(dt) {
         dx += 1;
     }
 
-    if (dx !== 0 || dy !== 0) {
-        const len =
-            Math.hypot(dx, dy);
+    const moving =
+        dx !== 0 ||
+        dy !== 0;
 
-        dx /= len;
-        dy /= len;
+    player.moving = moving;
 
-        player.moving = true;
+    if (!moving) {
+        player.idleTime += dt / 1000;
+        return;
+    }
 
-        if (dx !== 0) {
-            player.facing =
-                dx > 0 ? 1 : -1;
-        }
+    player.idleTime = 0;
 
-        movePlayer(
-            dx * PLAYER_SPEED * dt,
-            dy * PLAYER_SPEED * dt
+    const length =
+        Math.hypot(dx, dy);
+
+    dx /= length;
+    dy /= length;
+
+    if (dx !== 0) {
+        player.facing =
+            dx > 0 ? 1 : -1;
+    }
+
+    // Smooth continuous movement.
+    const speed =
+        PLAYER_SPEED * dt;
+
+    const moveX =
+        dx * speed;
+
+    const moveY =
+        dy * speed;
+
+    // X and Y are checked independently.
+    // This lets the player slide against walls.
+    if (
+        canMoveTo(
+            player.x + moveX,
+            player.y
+        )
+    ) {
+        player.x += moveX;
+    }
+
+    if (
+        canMoveTo(
+            player.x,
+            player.y + moveY
+        )
+    ) {
+        player.y += moveY;
+    }
+
+    player.walkTime +=
+        dt / 1000;
+}
+
+
+// ============================================================
+// CAMERA
+// ============================================================
+
+function updateCamera() {
+    // Strong following = player stays near center.
+    const smooth = 0.18;
+
+    camera.x +=
+        (player.x - camera.x) *
+        smooth;
+
+    camera.y +=
+        (player.y - camera.y) *
+        smooth;
+
+    // Never allow camera to expose the outside.
+    const halfW =
+        W / (2 * ZOOM);
+
+    const halfH =
+        H / (2 * ZOOM);
+
+    const minX = halfW;
+    const maxX = WORLD_W - halfW;
+
+    const minY = halfH;
+    const maxY = WORLD_H - halfH;
+
+    if (minX < maxX) {
+        camera.x =
+            Math.max(
+                minX,
+                Math.min(
+                    maxX,
+                    camera.x
+                )
+            );
+    }
+
+    if (minY < maxY) {
+        camera.y =
+            Math.max(
+                minY,
+                Math.min(
+                    maxY,
+                    camera.y
+                )
+            );
+    }
+}
+
+function worldToScreen(x, y) {
+    return {
+        x:
+            (x - camera.x) *
+            ZOOM +
+            W / 2,
+
+        y:
+            (y - camera.y) *
+            ZOOM +
+            H / 2
+    };
+}
+
+
+// ============================================================
+// SPACE
+// ============================================================
+
+function drawSpace() {
+    const gradient =
+        ctx.createRadialGradient(
+            W / 2,
+            H / 2,
+            0,
+            W / 2,
+            H / 2,
+            Math.max(W, H)
         );
 
-        player.walkTime +=
-            dt / 1000;
-    } else {
-        player.moving = false;
-    }
-}
-
-
-// ============================================================
-// TASK UPDATE
-// ============================================================
-
-function updateTask(dt) {
-    if (!currentTask) {
-        return;
-    }
-
-    if (
-        keys["e"] ||
-        keys[" "]
-    ) {
-        return;
-    }
-
-    taskProgress += dt / 1000;
-
-    if (
-        taskProgress >=
-        currentTask.time
-    ) {
-        currentTask.progress = 1;
-        currentTask.completed = true;
-        currentTask.active = false;
-
-        currentTask = null;
-        taskProgress = 0;
-    }
-}
-
-
-// ============================================================
-// VICTORY
-// ============================================================
-
-function allTasksComplete() {
-    return selectedTasks.every(
-        task => task.completed
+    gradient.addColorStop(
+        0,
+        "#182438"
     );
-}
 
-function drawVictory() {
-    if (!allTasksComplete()) {
-        return;
-    }
+    gradient.addColorStop(
+        0.55,
+        "#080d18"
+    );
 
-    ctx.save();
+    gradient.addColorStop(
+        1,
+        "#020306"
+    );
 
-    ctx.fillStyle =
-        "rgba(0,0,0,0.62)";
+    ctx.fillStyle = gradient;
 
     ctx.fillRect(
         0,
@@ -2623,41 +946,1442 @@ function drawVictory() {
         H
     );
 
-    ctx.textAlign = "center";
+    for (let i = 0; i < 130; i++) {
+        const x =
+            (i * 173.31) % W;
 
-    ctx.font =
-        "bold 42px Arial";
+        const y =
+            (i * 97.71) % H;
 
-    ctx.fillStyle = "#ffffff";
+        const alpha =
+            0.25 +
+            Math.sin(
+                gameTime * 2 + i
+            ) * 0.12;
 
-    ctx.fillText(
-        "ALL TASKS COMPLETE",
-        W / 2,
-        H / 2 - 25
-    );
+        ctx.globalAlpha =
+            Math.max(
+                0.05,
+                alpha
+            );
 
-    ctx.font =
-        "18px Arial";
+        ctx.fillStyle =
+            "#ffffff";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            x,
+            y,
+            i % 6 === 0
+                ? 1.3
+                : 0.65,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+
+// ============================================================
+// GROUND
+// ============================================================
+
+function drawGround() {
+    const a =
+        worldToScreen(0, 0);
+
+    const b =
+        worldToScreen(
+            WORLD_W,
+            WORLD_H
+        );
 
     ctx.fillStyle =
-        "#69d98c";
+        "#344c39";
+
+    ctx.fillRect(
+        a.x,
+        a.y,
+        b.x - a.x,
+        b.y - a.y
+    );
+
+    // Ground texture.
+    ctx.save();
+
+    ctx.globalAlpha = 0.12;
+
+    for (
+        let x = 0;
+        x < WORLD_W;
+        x += 4
+    ) {
+        for (
+            let y = 0;
+            y < WORLD_H;
+            y += 4
+        ) {
+            const n =
+                Math.sin(
+                    x * 9.17 +
+                    y * 4.73
+                );
+
+            if (n > 0.25) {
+                const p =
+                    worldToScreen(
+                        x,
+                        y
+                    );
+
+                ctx.fillStyle =
+                    n > 0.7
+                        ? "#9aaa65"
+                        : "#22352a";
+
+                ctx.fillRect(
+                    p.x,
+                    p.y,
+                    ZOOM * 0.4,
+                    ZOOM * 0.4
+                );
+            }
+        }
+    }
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// PATHS
+// ============================================================
+
+function drawPaths() {
+    for (const path of paths) {
+        const p =
+            worldToScreen(
+                path.x,
+                path.y
+            );
+
+        ctx.fillStyle =
+            "#70797d";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            path.w * ZOOM,
+            path.h * ZOOM
+        );
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.07)";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            path.w * ZOOM,
+            1 * ZOOM
+        );
+
+        ctx.strokeStyle =
+            "rgba(20,25,28,0.2)";
+
+        ctx.lineWidth =
+            0.5 * ZOOM;
+
+        for (
+            let x = path.x;
+            x < path.x + path.w;
+            x += 8
+        ) {
+            const a =
+                worldToScreen(
+                    x,
+                    path.y +
+                    path.h / 2
+                );
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                a.x,
+                a.y
+            );
+
+            ctx.lineTo(
+                a.x + 2 * ZOOM,
+                a.y
+            );
+
+            ctx.stroke();
+        }
+    }
+}
+
+
+// ============================================================
+// BUILDINGS
+// ============================================================
+
+function drawBuildings() {
+    for (const b of buildings) {
+        const p =
+            worldToScreen(
+                b.x,
+                b.y
+            );
+
+        // Shadow
+        ctx.fillStyle =
+            "rgba(0,0,0,0.35)";
+
+        ctx.fillRect(
+            p.x + 2 * ZOOM,
+            p.y + 3 * ZOOM,
+            b.w * ZOOM,
+            b.h * ZOOM
+        );
+
+        // Shell
+        ctx.fillStyle =
+            "#394349";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            b.w * ZOOM,
+            b.h * ZOOM
+        );
+
+        // Floor
+        ctx.fillStyle =
+            "#242b30";
+
+        ctx.fillRect(
+            p.x + 2 * ZOOM,
+            p.y + 2 * ZOOM,
+            (b.w - 4) * ZOOM,
+            (b.h - 4) * ZOOM
+        );
+
+        // Floor panels
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.04)";
+
+        ctx.lineWidth =
+            0.5 * ZOOM;
+
+        for (
+            let x = b.x + 6;
+            x < b.x + b.w;
+            x += 6
+        ) {
+            const a =
+                worldToScreen(
+                    x,
+                    b.y + 2
+                );
+
+            const c =
+                worldToScreen(
+                    x,
+                    b.y + b.h - 2
+                );
+
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(c.x, c.y);
+            ctx.stroke();
+        }
+
+        drawFurniture(b);
+        drawDoor(b);
+
+        // Building roof rim
+        ctx.fillStyle =
+            "#59636a";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            b.w * ZOOM,
+            2.5 * ZOOM
+        );
+
+        // Name
+        ctx.font =
+            `bold ${Math.max(
+                8,
+                2.2 * ZOOM
+            )}px Arial`;
+
+        ctx.textAlign =
+            "center";
+
+        ctx.textBaseline =
+            "bottom";
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.75)";
+
+        ctx.fillText(
+            b.name,
+            p.x +
+                b.w *
+                ZOOM /
+                2,
+            p.y - 1 * ZOOM
+        );
+    }
+}
+
+
+function drawDoor(b) {
+    let x;
+    let y;
+
+    const size = 9;
+
+    if (b.door === "bottom") {
+        x =
+            b.x +
+            b.w / 2 -
+            size / 2;
+
+        y =
+            b.y +
+            b.h -
+            2;
+    }
+
+    if (b.door === "top") {
+        x =
+            b.x +
+            b.w / 2 -
+            size / 2;
+
+        y =
+            b.y - 1;
+    }
+
+    if (b.door === "left") {
+        x =
+            b.x - 1;
+
+        y =
+            b.y +
+            b.h / 2 -
+            size / 2;
+    }
+
+    if (b.door === "right") {
+        x =
+            b.x +
+            b.w -
+            2;
+
+        y =
+            b.y +
+            b.h / 2 -
+            size / 2;
+    }
+
+    const p =
+        worldToScreen(
+            x,
+            y
+        );
+
+    ctx.fillStyle =
+        "#80d8c2";
+
+    if (
+        b.door === "top" ||
+        b.door === "bottom"
+    ) {
+        ctx.fillRect(
+            p.x,
+            p.y,
+            size * ZOOM,
+            3 * ZOOM
+        );
+    } else {
+        ctx.fillRect(
+            p.x,
+            p.y,
+            3 * ZOOM,
+            size * ZOOM
+        );
+    }
+}
+
+
+function drawFurniture(b) {
+    const p =
+        worldToScreen(
+            b.x,
+            b.y
+        );
+
+    function rect(
+        x,
+        y,
+        w,
+        h,
+        color
+    ) {
+        ctx.fillStyle = color;
+
+        ctx.fillRect(
+            p.x + x * ZOOM,
+            p.y + y * ZOOM,
+            w * ZOOM,
+            h * ZOOM
+        );
+    }
+
+    function circle(
+        x,
+        y,
+        r,
+        color
+    ) {
+        ctx.fillStyle = color;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x + x * ZOOM,
+            p.y + y * ZOOM,
+            r * ZOOM,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+
+    if (b.name === "CAFETERIA") {
+        circle(
+            28,
+            19,
+            8,
+            "#465157"
+        );
+
+        circle(
+            28,
+            19,
+            6,
+            "#59656a"
+        );
+
+        for (const pos of [
+            [10, 9],
+            [45, 9],
+            [10, 28],
+            [45, 28]
+        ]) {
+            circle(
+                pos[0],
+                pos[1],
+                2.5,
+                "#566168"
+            );
+        }
+    }
+
+    if (b.name === "MEDBAY") {
+        rect(
+            5,
+            6,
+            13,
+            5,
+            "#9ba8aa"
+        );
+
+        rect(
+            24,
+            6,
+            13,
+            5,
+            "#9ba8aa"
+        );
+
+        circle(
+            21,
+            16,
+            3,
+            "#57a89f"
+        );
+    }
+
+    if (
+        b.name === "UPPER ENGINE" ||
+        b.name === "LOWER ENGINE"
+    ) {
+        for (let i = 0; i < 3; i++) {
+            rect(
+                6 + i * 11,
+                6,
+                8,
+                18,
+                "#414b50"
+            );
+
+            circle(
+                10 + i * 11,
+                15,
+                2.2,
+                "#72959a"
+            );
+        }
+    }
+
+    if (b.name === "WEAPONS") {
+        rect(
+            5,
+            7,
+            33,
+            6,
+            "#455157"
+        );
+
+        circle(
+            22,
+            20,
+            4,
+            "#57909b"
+        );
+    }
+
+    if (b.name === "REACTOR") {
+        circle(
+            23,
+            18,
+            10,
+            "#39464b"
+        );
+
+        circle(
+            23,
+            18,
+            6,
+            "#527e84"
+        );
+
+        circle(
+            23,
+            18,
+            2.5,
+            "#9ce0d5"
+        );
+    }
+
+    if (b.name === "ELECTRICAL") {
+        for (let i = 0; i < 3; i++) {
+            rect(
+                5 + i * 11,
+                7,
+                8,
+                19,
+                "#424b50"
+            );
+
+            circle(
+                9 + i * 11,
+                12,
+                1.4,
+                "#b4c96c"
+            );
+
+            circle(
+                9 + i * 11,
+                20,
+                1.4,
+                "#c78d61"
+            );
+        }
+    }
+
+    if (b.name === "SECURITY") {
+        for (let i = 0; i < 3; i++) {
+            rect(
+                5 + i * 12,
+                7,
+                9,
+                7,
+                "#1b3038"
+            );
+        }
+
+        rect(
+            8,
+            19,
+            27,
+            5,
+            "#465157"
+        );
+    }
+
+    if (b.name === "STORAGE") {
+        for (
+            let y = 6;
+            y < 30;
+            y += 8
+        ) {
+            for (
+                let x = 5;
+                x < 43;
+                x += 10
+            ) {
+                rect(
+                    x,
+                    y,
+                    7,
+                    6,
+                    "#675b47"
+                );
+            }
+        }
+    }
+
+    if (b.name === "ADMIN") {
+        rect(
+            6,
+            7,
+            28,
+            7,
+            "#3d4a4f"
+        );
+
+        rect(
+            10,
+            20,
+            20,
+            5,
+            "#4c595e"
+        );
+    }
+
+    if (b.name === "NAVIGATION") {
+        rect(
+            5,
+            7,
+            32,
+            8,
+            "#263e46"
+        );
+
+        circle(
+            21,
+            11,
+            4,
+            "#70aab3"
+        );
+    }
+
+    if (b.name === "O2") {
+        for (let i = 0; i < 3; i++) {
+            circle(
+                10 + i * 9,
+                17,
+                4,
+                "#4c6769"
+            );
+        }
+    }
+
+    if (
+        b.name === "COMMUNICATIONS"
+    ) {
+        rect(
+            6,
+            8,
+            28,
+            6,
+            "#3c494e"
+        );
+
+        rect(
+            10,
+            19,
+            20,
+            5,
+            "#4b585d"
+        );
+    }
+}
+
+
+// ============================================================
+// TASK MARKERS
+// ============================================================
+
+function drawTaskMarkers() {
+    for (const task of selectedTasks) {
+        if (task.completed) {
+            continue;
+        }
+
+        const p =
+            worldToScreen(
+                task.x,
+                task.y
+            );
+
+        const pulse =
+            1 +
+            Math.sin(
+                gameTime * 4 +
+                task.x
+            ) * 0.12;
+
+        const near =
+            Math.hypot(
+                player.x - task.x,
+                player.y - task.y
+            ) < 6;
+
+        ctx.save();
+
+        ctx.globalAlpha =
+            near ? 1 : 0.65;
+
+        ctx.fillStyle =
+            task.time <= 2.5
+                ? "#62ff86"
+                : task.time <= 5
+                    ? "#ffd85a"
+                    : "#ff705c";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            2 * ZOOM * pulse,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        ctx.fillStyle =
+            "#ffffff";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            0.55 * ZOOM,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+
+// ============================================================
+// ANIMATED PLAYER
+// ============================================================
+
+function drawPlayer() {
+    const p =
+        worldToScreen(
+            player.x,
+            player.y
+        );
+
+    const s = ZOOM;
+
+    const walking =
+        player.moving;
+
+    // Walking animation
+    const walk =
+        walking
+            ? Math.sin(
+                player.walkTime * 18
+            )
+            : 0;
+
+    // Body bob
+    const bob =
+        walking
+            ? Math.abs(walk) * 0.35
+            : Math.sin(
+                player.idleTime * 2
+            ) * 0.12;
+
+    // Idle breathing
+    const breathe =
+        walking
+            ? 0
+            : Math.sin(
+                player.idleTime * 2.2
+            ) * 0.04;
+
+    ctx.save();
+
+    ctx.translate(
+        p.x,
+        p.y -
+        bob * s
+    );
+
+    ctx.scale(
+        1 + breathe,
+        1 - breathe
+    );
+
+
+    // Shadow
+    ctx.fillStyle =
+        "rgba(0,0,0,0.35)";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        0,
+        3 * s,
+        2.5 * s,
+        0.75 * s,
+        0,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    // Legs
+    const legA =
+        walk * 0.5;
+
+    const legB =
+        -walk * 0.5;
+
+    ctx.fillStyle =
+        "#921f29";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        -1.45 * s +
+            legA * s,
+        0.8 * s,
+        1.25 * s,
+        2.2 * s,
+        0.55 * s
+    );
+
+    ctx.fill();
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        0.2 * s +
+            legB * s,
+        0.8 * s,
+        1.25 * s,
+        2.2 * s,
+        0.55 * s
+    );
+
+    ctx.fill();
+
+
+    // Backpack
+    ctx.fillStyle =
+        "#9f252e";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        -2.65 * s,
+        -2.3 * s,
+        1.7 * s,
+        4.5 * s,
+        0.7 * s
+    );
+
+    ctx.fill();
+
+
+    // Body
+    ctx.fillStyle =
+        "#d93845";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        -2 * s,
+        -3.4 * s,
+        4 * s,
+        5.9 * s,
+        1.65 * s
+    );
+
+    ctx.fill();
+
+
+    // Body highlight
+    ctx.fillStyle =
+        "rgba(255,255,255,0.1)";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        -1.55 * s,
+        -2.8 * s,
+        0.65 * s,
+        3.5 * s,
+        0.3 * s
+    );
+
+    ctx.fill();
+
+
+    // Visor
+    const visorX =
+        player.facing *
+        0.35;
+
+    ctx.fillStyle =
+        "#112b38";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        visorX * s,
+        -1.8 * s,
+        1.65 * s,
+        1.05 * s,
+        0,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    // Visor reflection
+    ctx.fillStyle =
+        "#8ce0f2";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        (visorX + player.facing * 0.32) * s,
+        -2.02 * s,
+        0.95 * s,
+        0.43 * s,
+        -0.12,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    // Moving visor shine
+    const shine =
+        Math.sin(
+            gameTime * 2
+        ) * 0.12;
+
+    ctx.fillStyle =
+        `rgba(255,255,255,${0.35 + shine})`;
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        (visorX +
+            player.facing * 0.62) * s,
+        -2.15 * s,
+        0.28 * s,
+        0.12 * s,
+        -0.12,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// BARRIER
+// ============================================================
+
+function drawBarrier() {
+    const a =
+        worldToScreen(
+            0,
+            0
+        );
+
+    const b =
+        worldToScreen(
+            WORLD_W,
+            WORLD_H
+        );
+
+    const pulse =
+        Math.sin(
+            gameTime * 3
+        ) *
+        0.25 +
+        0.75;
+
+    ctx.save();
+
+    ctx.strokeStyle =
+        `rgba(85,220,255,${pulse})`;
+
+    ctx.lineWidth =
+        1.5 * ZOOM;
+
+    ctx.shadowColor =
+        "#42dfff";
+
+    ctx.shadowBlur =
+        12;
+
+    ctx.strokeRect(
+        a.x,
+        a.y,
+        b.x - a.x,
+        b.y - a.y
+    );
+
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// TASK INTERACTION
+// ============================================================
+
+function interact() {
+    if (currentTask) {
+        currentTask.active = false;
+        currentTask = null;
+        taskProgress = 0;
+        return;
+    }
+
+    let closest = null;
+    let closestDistance = Infinity;
+
+    for (const task of selectedTasks) {
+        if (task.completed) {
+            continue;
+        }
+
+        const d =
+            Math.hypot(
+                player.x - task.x,
+                player.y - task.y
+            );
+
+        if (
+            d < closestDistance
+        ) {
+            closest =
+                task;
+
+            closestDistance =
+                d;
+        }
+    }
+
+    if (
+        closest &&
+        closestDistance < 6
+    ) {
+        currentTask =
+            closest;
+
+        currentTask.active =
+            true;
+
+        taskProgress = 0;
+    }
+}
+
+function updateTask(dt) {
+    if (!currentTask) {
+        return;
+    }
+
+    taskProgress +=
+        dt / 1000;
+
+    if (
+        taskProgress >=
+        currentTask.time
+    ) {
+        currentTask.completed =
+            true;
+
+        currentTask.active =
+            false;
+
+        currentTask =
+            null;
+
+        taskProgress =
+            0;
+    }
+}
+
+
+// ============================================================
+// UI
+// ============================================================
+
+function drawUI() {
+    const completed =
+        selectedTasks.filter(
+            task =>
+                task.completed
+        ).length;
+
+    const total =
+        selectedTasks.length;
+
+    ctx.save();
+
+    ctx.fillStyle =
+        "rgba(7,11,15,0.85)";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        16,
+        16,
+        245,
+        68,
+        10
+    );
+
+    ctx.fill();
+
+    ctx.font =
+        "bold 15px Arial";
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.textAlign =
+        "left";
 
     ctx.fillText(
-        "The planet is safe.",
-        W / 2,
-        H / 2 + 15
+        "TASKS",
+        30,
+        38
     );
 
     ctx.font =
         "13px Arial";
 
     ctx.fillStyle =
-        "#aeb8bd";
+        "#aab4ba";
 
     ctx.fillText(
-        "Refresh the page to start a new round.",
+        `${completed} / ${total}`,
+        30,
+        59
+    );
+
+    ctx.fillStyle =
+        "rgba(255,255,255,0.1)";
+
+    ctx.fillRect(
+        85,
+        52,
+        155,
+        8
+    );
+
+    ctx.fillStyle =
+        "#63dc87";
+
+    ctx.fillRect(
+        85,
+        52,
+        155 *
+            (completed / total),
+        8
+    );
+
+    ctx.restore();
+
+
+    // Interaction
+    if (currentTask) {
+        drawTaskWindow();
+    } else {
+        drawInteractionPrompt();
+    }
+
+
+    // Victory
+    if (
+        selectedTasks.every(
+            task =>
+                task.completed
+        )
+    ) {
+        drawVictory();
+    }
+}
+
+
+function drawInteractionPrompt() {
+    let closest = null;
+    let closestDistance =
+        Infinity;
+
+    for (const task of selectedTasks) {
+        if (task.completed) {
+            continue;
+        }
+
+        const d =
+            Math.hypot(
+                player.x - task.x,
+                player.y - task.y
+            );
+
+        if (
+            d <
+            closestDistance
+        ) {
+            closest =
+                task;
+
+            closestDistance =
+                d;
+        }
+    }
+
+    if (
+        !closest ||
+        closestDistance >= 6
+    ) {
+        return;
+    }
+
+    const w = 280;
+    const h = 46;
+
+    const x =
+        W / 2 -
+        w / 2;
+
+    const y =
+        H - 72;
+
+    ctx.save();
+
+    ctx.fillStyle =
+        "rgba(7,11,15,0.92)";
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        x,
+        y,
+        w,
+        h,
+        10
+    );
+
+    ctx.fill();
+
+    ctx.font =
+        "bold 14px Arial";
+
+    ctx.textAlign =
+        "center";
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.fillText(
+        `E  —  ${closest.name}`,
         W / 2,
-        H / 2 + 50
+        y + 29
+    );
+
+    ctx.restore();
+}
+
+
+function drawTaskWindow() {
+    const w = 360;
+    const h = 105;
+
+    const x =
+        W / 2 -
+        w / 2;
+
+    const y =
+        H / 2 -
+        h / 2;
+
+    ctx.save();
+
+    ctx.fillStyle =
+        "rgba(6,9,13,0.96)";
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.2)";
+
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        x,
+        y,
+        w,
+        h,
+        13
+    );
+
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font =
+        "bold 18px Arial";
+
+    ctx.textAlign =
+        "center";
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.fillText(
+        currentTask.name,
+        W / 2,
+        y + 32
+    );
+
+    ctx.font =
+        "12px Arial";
+
+    ctx.fillStyle =
+        "#aeb7bd";
+
+    ctx.fillText(
+        "Completing task...",
+        W / 2,
+        y + 52
+    );
+
+    ctx.fillStyle =
+        "rgba(255,255,255,0.1)";
+
+    ctx.fillRect(
+        x + 30,
+        y + 67,
+        w - 60,
+        12
+    );
+
+    ctx.fillStyle =
+        currentTask.time <= 2.5
+            ? "#5cff83"
+            : currentTask.time <= 5
+                ? "#ffd75c"
+                : "#ff705c";
+
+    ctx.fillRect(
+        x + 30,
+        y + 67,
+        (w - 60) *
+            Math.min(
+                1,
+                taskProgress /
+                currentTask.time
+            ),
+        12
+    );
+
+    ctx.font =
+        "11px Arial";
+
+    ctx.fillStyle =
+        "#879197";
+
+    ctx.fillText(
+        "Press E to cancel",
+        W / 2,
+        y + 96
+    );
+
+    ctx.restore();
+}
+
+
+function drawVictory() {
+    ctx.save();
+
+    ctx.fillStyle =
+        "rgba(0,0,0,0.6)";
+
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    ctx.textAlign =
+        "center";
+
+    ctx.font =
+        "bold 40px Arial";
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.fillText(
+        "TASKS COMPLETE",
+        W / 2,
+        H / 2 - 20
+    );
+
+    ctx.font =
+        "17px Arial";
+
+    ctx.fillStyle =
+        "#66dd88";
+
+    ctx.fillText(
+        "You survived the planet.",
+        W / 2,
+        H / 2 + 20
     );
 
     ctx.restore();
@@ -2665,68 +2389,42 @@ function drawVictory() {
 
 
 // ============================================================
-// MAIN DRAW
+// LOOP
 // ============================================================
 
-function draw() {
-    ctx.clearRect(
-        0,
-        0,
-        W,
-        H
-    );
+let lastTime =
+    performance.now();
 
-    drawSpace();
-
-    drawGround();
-
-    drawPaths();
-
-    drawTrees();
-
-    drawRocks();
-
-    drawBuildings();
-
-    drawBarrier();
-
-    drawTaskMarkers();
-
-    drawPlayer();
-
-    drawTaskUI();
-
-    drawCompass();
-
-    drawInteractionUI();
-
-    drawVictory();
-}
-
-
-// ============================================================
-// GAME LOOP
-// ============================================================
-
-let lastTime = performance.now();
-
-function gameLoop(now) {
-    const dt = Math.min(
-        50,
-        now - lastTime
-    );
+function loop(now) {
+    const dt =
+        Math.min(
+            50,
+            now - lastTime
+        );
 
     lastTime = now;
 
-    gameTime += dt / 1000;
+    gameTime +=
+        dt / 1000;
 
     updatePlayer(dt);
     updateTask(dt);
     updateCamera();
 
-    draw();
+    drawSpace();
+    drawGround();
+    drawPaths();
+    drawBuildings();
+    drawBarrier();
+    drawTaskMarkers();
+    drawPlayer();
+    drawUI();
 
-    requestAnimationFrame(gameLoop);
+    requestAnimationFrame(
+        loop
+    );
 }
 
-requestAnimationFrame(gameLoop);
+requestAnimationFrame(
+    loop
+);
