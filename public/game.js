@@ -1,818 +1,991 @@
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
+
 const newGameButton = document.getElementById("newGame");
 
 let game = null;
-
-const WORLD = {
-    width: 3200,
-    height: 1900
-};
-
-const camera = {
-    x: 1600,
-    y: 950,
-    zoom: 0.62
+let camera = {
+    x: 0,
+    y: 0,
+    zoom: 1
 };
 
 let dragging = false;
-let dragX = 0;
-let dragY = 0;
-let startCameraX = 0;
-let startCameraY = 0;
+let dragStartX = 0;
+let dragStartY = 0;
+let cameraStartX = 0;
+let cameraStartY = 0;
 
-let lastTime = performance.now();
+const WORLD_WIDTH = 1200;
+const WORLD_HEIGHT = 800;
 
+/*
+    THE SKELD
 
-// ============================================================
-// CANVAS
-// ============================================================
+    Coordinate system is based on the real Skeld layout:
 
-function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+                 UPPER ENGINE     CAFETERIA      WEAPONS
+                       \              |              \
+                        MEDBAY        |              O2
+                         |            |               |
+                      SECURITY        |          NAVIGATION
+                         |            |               \
+                    ELECTRICAL     STORAGE          SHIELDS
+                         |             |
+                    LOWER ENGINE      ADMIN
+                         |             |
+                      REACTOR     COMMUNICATIONS
+
+    The map is intentionally drawn as vector geometry so
+    no copyrighted game texture files are required.
+*/
+
+const rooms = {
+
+    upperEngine: {
+        name: "Upper Engine",
+        polygon: [
+            [65, 150],
+            [65, 75],
+            [125, 45],
+            [225, 45],
+            [255, 75],
+            [255, 150],
+            [225, 180],
+            [100, 180]
+        ]
+    },
+
+    reactor: {
+        name: "Reactor",
+        polygon: [
+            [65, 285],
+            [65, 215],
+            [100, 185],
+            [225, 185],
+            [255, 215],
+            [255, 330],
+            [225, 360],
+            [100, 360]
+        ]
+    },
+
+    lowerEngine: {
+        name: "Lower Engine",
+        polygon: [
+            [65, 455],
+            [65, 385],
+            [100, 355],
+            [225, 355],
+            [255, 385],
+            [255, 470],
+            [225, 500],
+            [100, 500]
+        ]
+    },
+
+    medbay: {
+        name: "MedBay",
+        polygon: [
+            [275, 105],
+            [275, 55],
+            [350, 55],
+            [395, 95],
+            [395, 165],
+            [350, 190],
+            [285, 190],
+            [255, 165],
+            [255, 125]
+        ]
+    },
+
+    security: {
+        name: "Security",
+        polygon: [
+            [275, 205],
+            [275, 165],
+            [325, 145],
+            [390, 145],
+            [410, 175],
+            [410, 245],
+            [380, 270],
+            [300, 270],
+            [275, 245]
+        ]
+    },
+
+    electrical: {
+        name: "Electrical",
+        polygon: [
+            [275, 300],
+            [275, 265],
+            [320, 245],
+            [400, 245],
+            [425, 275],
+            [425, 350],
+            [390, 380],
+            [305, 380],
+            [275, 350]
+        ]
+    },
+
+    cafeteria: {
+        name: "Cafeteria",
+        polygon: [
+            [430, 70],
+            [475, 30],
+            [650, 30],
+            [700, 70],
+            [700, 230],
+            [650, 275],
+            [475, 275],
+            [425, 230],
+            [425, 115]
+        ]
+    },
+
+    weapons: {
+        name: "Weapons",
+        polygon: [
+            [725, 65],
+            [725, 35],
+            [790, 15],
+            [875, 35],
+            [895, 75],
+            [895, 145],
+            [850, 175],
+            [770, 175],
+            [725, 140]
+        ]
+    },
+
+    navigation: {
+        name: "Navigation",
+        polygon: [
+            [930, 100],
+            [930, 65],
+            [1010, 40],
+            [1110, 70],
+            [1145, 115],
+            [1145, 205],
+            [1100, 245],
+            [1010, 245],
+            [960, 215],
+            [930, 175]
+        ]
+    },
+
+    o2: {
+        name: "O2",
+        polygon: [
+            [810, 230],
+            [810, 190],
+            [865, 170],
+            [935, 190],
+            [960, 230],
+            [960, 300],
+            [920, 330],
+            [850, 330],
+            [810, 295]
+        ]
+    },
+
+    admin: {
+        name: "Admin",
+        polygon: [
+            [570, 350],
+            [570, 315],
+            [625, 285],
+            [715, 285],
+            [760, 320],
+            [760, 395],
+            [715, 430],
+            [625, 430],
+            [570, 400]
+        ]
+    },
+
+    storage: {
+        name: "Storage",
+        polygon: [
+            [430, 350],
+            [430, 300],
+            [475, 275],
+            [565, 275],
+            [600, 310],
+            [600, 470],
+            [565, 505],
+            [475, 505],
+            [430, 470]
+        ]
+    },
+
+    communications: {
+        name: "Communications",
+        polygon: [
+            [570, 490],
+            [570, 455],
+            [625, 430],
+            [715, 430],
+            [755, 465],
+            [755, 540],
+            [715, 570],
+            [625, 570],
+            [570, 535]
+        ]
+    },
+
+    shields: {
+        name: "Shields",
+        polygon: [
+            [800, 430],
+            [800, 395],
+            [850, 360],
+            [930, 360],
+            [975, 395],
+            [975, 475],
+            [930, 515],
+            [850, 515],
+            [800, 480]
+        ]
+    }
+};
+
+const corridors = [
+
+    // Upper Engine -> MedBay
+    [
+        [235, 115],
+        [275, 115],
+        [275, 155],
+        [235, 155]
+    ],
+
+    // MedBay -> Cafeteria
+    [
+        [395, 115],
+        [430, 115],
+        [430, 155],
+        [395, 155]
+    ],
+
+    // Security -> Cafeteria
+    [
+        [410, 175],
+        [445, 175],
+        [445, 215],
+        [410, 215]
+    ],
+
+    // Electrical -> Storage
+    [
+        [425, 320],
+        [470, 320],
+        [470, 360],
+        [425, 360]
+    ],
+
+    // Cafeteria -> Storage
+    [
+        [515, 275],
+        [555, 275],
+        [555, 320],
+        [515, 320]
+    ],
+
+    // Cafeteria -> Admin
+    [
+        [650, 275],
+        [650, 315],
+        [690, 315],
+        [690, 275]
+    ],
+
+    // Cafeteria -> Weapons
+    [
+        [700, 110],
+        [725, 110],
+        [725, 145],
+        [700, 145]
+    ],
+
+    // Weapons -> Navigation
+    [
+        [895, 105],
+        [960, 105],
+        [960, 145],
+        [895, 145]
+    ],
+
+    // Navigation -> O2
+    [
+        [925, 170],
+        [960, 170],
+        [960, 235],
+        [925, 235]
+    ],
+
+    // O2 -> Shields
+    [
+        [900, 330],
+        [900, 390],
+        [930, 390],
+        [930, 330]
+    ],
+
+    // Storage -> Admin
+    [
+        [600, 365],
+        [625, 365],
+        [625, 405],
+        [600, 405]
+    ],
+
+    // Storage -> Communications
+    [
+        [530, 470],
+        [570, 470],
+        [570, 505],
+        [530, 505]
+    ],
+
+    // Admin -> Communications
+    [
+        [665, 430],
+        [665, 455],
+        [700, 455],
+        [700, 430]
+    ],
+
+    // Communications -> Shields
+    [
+        [755, 490],
+        [800, 490],
+        [800, 525],
+        [755, 525]
+    ],
+
+    // Upper Engine -> Reactor
+    [
+        [130, 180],
+        [170, 180],
+        [170, 215],
+        [130, 215]
+    ],
+
+    // Reactor -> Lower Engine
+    [
+        [130, 350],
+        [170, 350],
+        [170, 385],
+        [130, 385]
+    ],
+
+    // Electrical -> Lower Engine
+    [
+        [255, 400],
+        [275, 400],
+        [275, 440],
+        [255, 440]
+    ]
+];
+
+const roomCenters = {
+    "Upper Engine": [160, 115],
+    "Reactor": [160, 270],
+    "Lower Engine": [160, 425],
+    "MedBay": [330, 120],
+    "Security": [345, 205],
+    "Electrical": [350, 315],
+    "Cafeteria": [560, 150],
+    "Weapons": [810, 100],
+    "Navigation": [1035, 145],
+    "O2": [880, 250],
+    "Admin": [665, 355],
+    "Storage": [515, 390],
+    "Communications": [665, 500],
+    "Shields": [885, 435]
+};
+
+const roomColors = {
+    "Upper Engine": "#8f5037",
+    "Reactor": "#5b5960",
+    "Lower Engine": "#8f5037",
+    "MedBay": "#587f83",
+    "Security": "#4d5963",
+    "Electrical": "#615852",
+    "Cafeteria": "#b5b6ad",
+    "Weapons": "#5c7e88",
+    "Navigation": "#4e6872",
+    "O2": "#6c817d",
+    "Admin": "#866276",
+    "Storage": "#8d7f56",
+    "Communications": "#486d78",
+    "Shields": "#657b7b"
+};
+
+const roomMap = {};
+
+for (const room of Object.values(rooms)) {
+    roomMap[room.name] = room;
+}
+
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
 
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
 
-    canvas.style.width = `${window.innerWidth}px`;
-    canvas.style.height = `${window.innerHeight}px`;
+    canvas.style.width = window.innerWidth + "px";
+    canvas.style.height = window.innerHeight + "px";
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    fitMap();
 }
 
-window.addEventListener("resize", resize);
-resize();
+function fitMap() {
 
+    const padding = 50;
 
-// ============================================================
-// CAMERA
-// ============================================================
+    const availableWidth = window.innerWidth - padding * 2;
+    const availableHeight = window.innerHeight - padding * 2;
 
-function screenToWorld(x, y) {
-    return {
-        x: camera.x + (x - window.innerWidth / 2) / camera.zoom,
-        y: camera.y + (y - window.innerHeight / 2) / camera.zoom
-    };
+    const zoomX = availableWidth / WORLD_WIDTH;
+    const zoomY = availableHeight / WORLD_HEIGHT;
+
+    camera.zoom = Math.min(zoomX, zoomY);
+
+    camera.x =
+        (window.innerWidth - WORLD_WIDTH * camera.zoom) / 2;
+
+    camera.y =
+        (window.innerHeight - WORLD_HEIGHT * camera.zoom) / 2;
 }
 
 function worldToScreen(x, y) {
     return {
-        x: (x - camera.x) * camera.zoom + window.innerWidth / 2,
-        y: (y - camera.y) * camera.zoom + window.innerHeight / 2
+        x: camera.x + x * camera.zoom,
+        y: camera.y + y * camera.zoom
     };
 }
 
-function clampCamera() {
-    const halfW = window.innerWidth / camera.zoom / 2;
-    const halfH = window.innerHeight / camera.zoom / 2;
-
-    camera.x = Math.max(
-        halfW,
-        Math.min(WORLD.width - halfW, camera.x)
-    );
-
-    camera.y = Math.max(
-        halfH,
-        Math.min(WORLD.height - halfH, camera.y)
-    );
+function screenToWorld(x, y) {
+    return {
+        x: (x - camera.x) / camera.zoom,
+        y: (y - camera.y) / camera.zoom
+    };
 }
 
+function drawPolygon(points, fill, stroke, lineWidth = 4) {
 
-// ============================================================
-// CAMERA CONTROLS
-// ============================================================
+    ctx.beginPath();
 
-canvas.addEventListener("pointerdown", e => {
-    dragging = true;
+    for (let i = 0; i < points.length; i++) {
 
-    dragX = e.clientX;
-    dragY = e.clientY;
+        const point = worldToScreen(
+            points[i][0],
+            points[i][1]
+        );
 
-    startCameraX = camera.x;
-    startCameraY = camera.y;
-
-    canvas.classList.add("dragging");
-
-    canvas.setPointerCapture(e.pointerId);
-});
-
-canvas.addEventListener("pointermove", e => {
-    if (!dragging) return;
-
-    camera.x =
-        startCameraX -
-        (e.clientX - dragX) / camera.zoom;
-
-    camera.y =
-        startCameraY -
-        (e.clientY - dragY) / camera.zoom;
-
-    clampCamera();
-});
-
-canvas.addEventListener("pointerup", e => {
-    dragging = false;
-
-    canvas.classList.remove("dragging");
-
-    try {
-        canvas.releasePointerCapture(e.pointerId);
-    } catch {}
-});
-
-canvas.addEventListener("pointercancel", () => {
-    dragging = false;
-    canvas.classList.remove("dragging");
-});
-
-canvas.addEventListener("wheel", e => {
-    e.preventDefault();
-
-    const before = screenToWorld(
-        e.clientX,
-        e.clientY
-    );
-
-    camera.zoom *= e.deltaY < 0 ? 1.12 : 0.89;
-
-    camera.zoom = Math.max(
-        0.30,
-        Math.min(2.5, camera.zoom)
-    );
-
-    const after = screenToWorld(
-        e.clientX,
-        e.clientY
-    );
-
-    camera.x += before.x - after.x;
-    camera.y += before.y - after.y;
-
-    clampCamera();
-}, {
-    passive: false
-});
-
-
-// ============================================================
-// SKELD-LIKE MAP GEOMETRY
-// ============================================================
-//
-// Room positions follow the recognizable Skeld arrangement:
-//
-//                 CAFETERIA
-//          MEDBAY       WEAPONS
-//
-//   UPPER ENGINE                 NAVIGATION
-//
-//   REACTOR       SECURITY       O2
-//
-//   LOWER ENGINE  ELECTRICAL     SHIELDS
-//
-//                 STORAGE
-//                     |
-//                   ADMIN
-//
-// ============================================================
-
-const rooms = {
-
-    cafeteria: {
-        x: 1050,
-        y: 470,
-        w: 700,
-        h: 500
-    },
-
-    medbay: {
-        x: 430,
-        y: 250,
-        w: 420,
-        h: 360
-    },
-
-    weapons: {
-        x: 1870,
-        y: 250,
-        w: 470,
-        h: 390
-    },
-
-    upperEngine: {
-        x: 250,
-        y: 650,
-        w: 500,
-        h: 330
-    },
-
-    security: {
-        x: 820,
-        y: 1050,
-        w: 360,
-        h: 310
-    },
-
-    reactor: {
-        x: 220,
-        y: 1080,
-        w: 500,
-        h: 430
-    },
-
-    lowerEngine: {
-        x: 250,
-        y: 1500,
-        w: 500,
-        h: 300
-    },
-
-    electrical: {
-        x: 820,
-        y: 1450,
-        w: 400,
-        h: 350
-    },
-
-    storage: {
-        x: 1120,
-        y: 1030,
-        w: 500,
-        h: 500
-    },
-
-    admin: {
-        x: 1510,
-        y: 1420,
-        w: 410,
-        h: 340
-    },
-
-    o2: {
-        x: 2200,
-        y: 700,
-        w: 400,
-        h: 350
-    },
-
-    navigation: {
-        x: 2390,
-        y: 260,
-        w: 500,
-        h: 430
-    },
-
-    shields: {
-        x: 2260,
-        y: 1250,
-        w: 480,
-        h: 420
+        if (i === 0) {
+            ctx.moveTo(point.x, point.y);
+        } else {
+            ctx.lineTo(point.x, point.y);
+        }
     }
-};
 
+    ctx.closePath();
 
-// ============================================================
-// CORRIDORS
-// ============================================================
+    ctx.fillStyle = fill;
+    ctx.fill();
 
-const corridors = [
-    // Cafeteria -> MedBay
-    [1050, 600, 850, 600],
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lineWidth * camera.zoom;
+    ctx.stroke();
+}
 
-    // Cafeteria -> Weapons
-    [1750, 600, 1870, 600],
+function drawMapBackground() {
 
-    // Cafeteria -> Upper Engine
-    [1050, 720, 750, 800],
-
-    // Cafeteria -> Storage
-    [1300, 970, 1300, 1030],
-
-    // Cafeteria -> Security
-    [1100, 970, 1000, 1050],
-
-    // Cafeteria -> Admin
-    [1500, 970, 1700, 1420],
-
-    // Upper Engine -> Reactor
-    [500, 980, 500, 1080],
-
-    // Reactor -> Lower Engine
-    [500, 1510, 500, 1500],
-
-    // Reactor -> Security
-    [720, 1250, 820, 1200],
-
-    // Security -> Electrical
-    [1180, 1200, 1250, 1450],
-
-    // Storage -> Electrical
-    [1120, 1270, 1220, 1450],
-
-    // Storage -> Admin
-    [1620, 1300, 1700, 1420],
-
-    // Weapons -> Navigation
-    [2340, 450, 2390, 450],
-
-    // Weapons -> O2
-    [2250, 640, 2350, 700],
-
-    // Navigation -> O2
-    [2500, 690, 2400, 700],
-
-    // O2 -> Shields
-    [2400, 1050, 2420, 1250],
-
-    // Admin -> Shields
-    [1920, 1550, 2260, 1450]
-];
-
-
-// ============================================================
-// BACKGROUND
-// ============================================================
-
-function drawBackground() {
-    ctx.fillStyle = "#080a0d";
+    ctx.fillStyle = "#05070a";
     ctx.fillRect(
         0,
         0,
-        WORLD.width,
-        WORLD.height
+        window.innerWidth,
+        window.innerHeight
     );
 }
 
+function drawShipShadow() {
 
-// ============================================================
-// SHIP HULL
-// ============================================================
+    const ship = [
+        [40, 120],
+        [80, 70],
+        [150, 35],
+        [350, 35],
+        [420, 55],
+        [475, 25],
+        [650, 25],
+        [710, 55],
+        [790, 10],
+        [900, 30],
+        [970, 55],
+        [1040, 30],
+        [1130, 60],
+        [1170, 110],
+        [1170, 250],
+        [1135, 280],
+        [990, 280],
+        [990, 350],
+        [1010, 400],
+        [1000, 500],
+        [950, 545],
+        [780, 555],
+        [760, 590],
+        [600, 590],
+        [550, 530],
+        [430, 530],
+        [380, 520],
+        [240, 520],
+        [210, 535],
+        [80, 525],
+        [40, 475]
+    ];
 
-function drawHull() {
-    ctx.fillStyle = "#15191d";
-
-    ctx.beginPath();
-
-    ctx.moveTo(150, 450);
-    ctx.lineTo(400, 180);
-    ctx.lineTo(2800, 180);
-    ctx.lineTo(3050, 450);
-    ctx.lineTo(3050, 1650);
-    ctx.lineTo(2800, 1810);
-    ctx.lineTo(400, 1810);
-    ctx.lineTo(150, 1600);
-
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = "#515960";
-    ctx.lineWidth = 25;
-    ctx.stroke();
-}
-
-
-// ============================================================
-// CORRIDORS
-// ============================================================
-
-function drawCorridor(x1, y1, x2, y2) {
-    ctx.strokeStyle = "#0c0f12";
-    ctx.lineWidth = 150;
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-
-    ctx.strokeStyle = "#353b40";
-    ctx.lineWidth = 105;
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-
-    ctx.strokeStyle = "#464d52";
-    ctx.lineWidth = 3;
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1 - 48);
-    ctx.lineTo(x2, y2 - 48);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1 + 48);
-    ctx.lineTo(x2, y2 + 48);
-    ctx.stroke();
-}
-
-
-// ============================================================
-// FLOOR
-// ============================================================
-
-function drawFloor(x, y, w, h) {
-    ctx.fillStyle = "#373d42";
-    ctx.fillRect(x, y, w, h);
-
-    const size = 32;
-
-    ctx.strokeStyle = "rgba(0,0,0,0.12)";
-    ctx.lineWidth = 2;
-
-    for (
-        let xx = x;
-        xx <= x + w;
-        xx += size
-    ) {
-        ctx.beginPath();
-        ctx.moveTo(xx, y);
-        ctx.lineTo(xx, y + h);
-        ctx.stroke();
-    }
-
-    for (
-        let yy = y;
-        yy <= y + h;
-        yy += size
-    ) {
-        ctx.beginPath();
-        ctx.moveTo(x, yy);
-        ctx.lineTo(x + w, yy);
-        ctx.stroke();
-    }
-
-    ctx.fillStyle = "rgba(255,255,255,0.025)";
-
-    for (
-        let xx = x + 5;
-        xx < x + w;
-        xx += size
-    ) {
-        for (
-            let yy = y + 5;
-            yy < y + h;
-            yy += size
-        ) {
-            ctx.fillRect(
-                xx,
-                yy,
-                size - 10,
-                size - 10
-            );
-        }
-    }
-}
-
-
-// ============================================================
-// ROOMS
-// ============================================================
-
-function drawRoom(room, label) {
-    ctx.fillStyle = "#111519";
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        room.x - 15,
-        room.y - 15,
-        room.w + 30,
-        room.h + 30,
-        30
-    );
-
-    ctx.fill();
-
-    drawFloor(
-        room.x,
-        room.y,
-        room.w,
-        room.h
-    );
-
-    ctx.strokeStyle = "#626a70";
-    ctx.lineWidth = 9;
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        room.x,
-        room.y,
-        room.w,
-        room.h,
+    drawPolygon(
+        ship,
+        "#14191d",
+        "#090b0e",
         20
     );
-
-    ctx.stroke();
-
-    drawRoomObjects(
-        room,
-        label
-    );
 }
 
+function drawCorridors() {
 
-// ============================================================
-// ROOM OBJECTS
-// ============================================================
+    for (const corridor of corridors) {
 
-function drawRoomObjects(room, label) {
-
-    const cx = room.x + room.w / 2;
-    const cy = room.y + room.h / 2;
-
-    if (label === "cafeteria") {
-        drawTable(cx, cy, 115);
-
-        drawTable(
-            room.x + 140,
-            room.y + 120,
-            65
+        drawPolygon(
+            corridor,
+            "#596066",
+            "#24292e",
+            5
         );
 
-        drawTable(
-            room.x + room.w - 140,
-            room.y + room.h - 120,
-            65
+        drawPolygon(
+            corridor.map(([x, y]) => [
+                x + 5,
+                y + 5
+            ]),
+            "#6b7378",
+            "rgba(0,0,0,0)",
+            0
         );
     }
+}
 
-    if (label === "weapons") {
-        drawWeaponConsole(
-            cx,
-            cy
+function drawRooms() {
+
+    for (const room of Object.values(rooms)) {
+
+        drawPolygon(
+            room.polygon,
+            roomColors[room.name] || "#777",
+            "#20262b",
+            6
         );
 
-        drawWeaponConsole(
-            cx + 100,
-            cy
-        );
+        drawRoomDetails(room.name, room.polygon);
+    }
+}
+
+function drawRoomDetails(name, polygon) {
+
+    const center = getPolygonCenter(polygon);
+    const p = worldToScreen(center.x, center.y);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.font =
+        `${Math.max(10, 15 * camera.zoom)}px Arial`;
+
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+
+    ctx.fillText(
+        name.toUpperCase(),
+        p.x,
+        p.y
+    );
+
+    if (name === "Cafeteria") {
+        drawCafeteria();
+    }
+
+    if (name === "Storage") {
+        drawStorage();
+    }
+
+    if (name === "Admin") {
+        drawAdmin();
+    }
+
+    if (name === "Electrical") {
+        drawElectrical();
+    }
+
+    if (name === "Security") {
+        drawSecurity();
+    }
+
+    if (name === "MedBay") {
+        drawMedBay();
     }
 
     if (
-        label === "upperEngine" ||
-        label === "lowerEngine"
+        name === "Upper Engine" ||
+        name === "Lower Engine"
     ) {
-        drawEngine(
-            cx,
-            cy,
-            room.w * 0.7,
-            room.h * 0.65
-        );
+        drawEngine(name);
     }
 
-    if (label === "medbay") {
-        drawBed(
-            room.x + 80,
-            room.y + 80
-        );
-
-        drawBed(
-            room.x + 80,
-            room.y + 170
-        );
-
-        drawScanner(
-            cx + 70,
-            cy
-        );
+    if (name === "Reactor") {
+        drawReactor();
     }
 
-    if (label === "security") {
-        drawConsole(
-            room.x + 100,
-            room.y + 100
-        );
-
-        drawConsole(
-            room.x + 200,
-            room.y + 100
-        );
-
-        drawCameraWall(
-            cx,
-            room.y + 230
-        );
+    if (name === "Weapons") {
+        drawWeapons();
     }
 
-    if (label === "reactor") {
-        drawReactor(
-            cx,
-            cy
-        );
+    if (name === "Navigation") {
+        drawNavigation();
     }
 
-    if (label === "electrical") {
-        for (let i = 0; i < 4; i++) {
-            drawPanel(
-                room.x + 50 + i * 80,
-                room.y + 80
-            );
-        }
+    if (name === "O2") {
+        drawO2();
     }
 
-    if (label === "storage") {
-        for (let i = 0; i < 5; i++) {
-            drawCrate(
-                room.x + 70 + i * 75,
-                room.y + 100
-            );
-        }
-
-        for (let i = 0; i < 4; i++) {
-            drawCrate(
-                room.x + 100 + i * 75,
-                room.y + 250
-            );
-        }
+    if (name === "Communications") {
+        drawCommunications();
     }
 
-    if (label === "admin") {
-        drawConsole(
-            cx - 90,
-            cy
-        );
-
-        drawConsole(
-            cx + 90,
-            cy
-        );
-    }
-
-    if (label === "o2") {
-        drawO2Tank(
-            cx,
-            cy
-        );
-
-        drawConsole(
-            cx + 90,
-            cy
-        );
-    }
-
-    if (label === "navigation") {
-        drawNavigationConsole(
-            cx,
-            cy
-        );
-
-        drawConsole(
-            cx + 110,
-            cy + 60
-        );
-    }
-
-    if (label === "shields") {
-        drawShieldArray(
-            cx,
-            cy
-        );
+    if (name === "Shields") {
+        drawShields();
     }
 }
 
+function getPolygonCenter(points) {
 
-// ============================================================
-// OBJECTS
-// ============================================================
+    let x = 0;
+    let y = 0;
 
-function drawTable(x, y, radius) {
-    ctx.fillStyle = "#20262b";
+    for (const point of points) {
+        x += point[0];
+        y += point[1];
+    }
+
+    return {
+        x: x / points.length,
+        y: y / points.length
+    };
+}
+
+function drawCafeteria() {
+
+    const tables = [
+        [505, 100],
+        [615, 100],
+        [505, 205],
+        [615, 205]
+    ];
+
+    for (const [x, y] of tables) {
+
+        const p = worldToScreen(x, y);
+
+        ctx.beginPath();
+        ctx.arc(
+            p.x,
+            p.y,
+            24 * camera.zoom,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = "#42728c";
+        ctx.fill();
+
+        ctx.strokeStyle = "#263f4c";
+        ctx.lineWidth = 4 * camera.zoom;
+        ctx.stroke();
+    }
+
+    const center = worldToScreen(560, 153);
 
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
 
-    ctx.strokeStyle = "#666e74";
-    ctx.lineWidth = 7;
-    ctx.stroke();
-
-    ctx.fillStyle = "#111519";
-
-    ctx.beginPath();
     ctx.arc(
-        x,
-        y,
-        radius * 0.7,
+        center.x,
+        center.y,
+        30 * camera.zoom,
         0,
         Math.PI * 2
     );
 
+    ctx.fillStyle = "#426f82";
     ctx.fill();
-}
 
-function drawBed(x, y) {
-    ctx.fillStyle = "#1b2024";
-    ctx.fillRect(x, y, 190, 60);
+    ctx.strokeStyle = "#263f4c";
+    ctx.lineWidth = 5 * camera.zoom;
+    ctx.stroke();
 
-    ctx.strokeStyle = "#626a70";
-    ctx.lineWidth = 5;
-    ctx.strokeRect(x, y, 190, 60);
+    ctx.fillStyle = "#d83232";
 
-    ctx.fillStyle = "#536069";
     ctx.fillRect(
-        x + 10,
-        y + 10,
-        75,
-        40
+        center.x - 9 * camera.zoom,
+        center.y - 7 * camera.zoom,
+        18 * camera.zoom,
+        14 * camera.zoom
     );
 }
 
-function drawScanner(x, y) {
-    ctx.fillStyle = "#20262a";
+function drawStorage() {
 
-    ctx.beginPath();
-    ctx.roundRect(
-        x - 55,
-        y - 75,
-        110,
-        150,
-        15
-    );
+    const crates = [
+        [470, 350],
+        [500, 350],
+        [530, 350],
+        [470, 380],
+        [505, 380]
+    ];
 
-    ctx.fill();
+    for (const [x, y] of crates) {
 
-    ctx.strokeStyle = "#667077";
-    ctx.lineWidth = 6;
-    ctx.stroke();
+        const p = worldToScreen(x, y);
+
+        ctx.fillStyle = "#6c684d";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            25 * camera.zoom,
+            25 * camera.zoom
+        );
+
+        ctx.strokeStyle = "#3d3a2d";
+        ctx.lineWidth = 2 * camera.zoom;
+        ctx.strokeRect(
+            p.x,
+            p.y,
+            25 * camera.zoom,
+            25 * camera.zoom
+        );
+    }
 }
 
-function drawEngine(x, y, w, h) {
-    ctx.fillStyle = "#181d21";
+function drawAdmin() {
 
-    ctx.beginPath();
-    ctx.ellipse(
-        x,
-        y,
-        w / 2,
-        h / 2,
-        0,
-        0,
-        Math.PI * 2
+    const p = worldToScreen(665, 355);
+
+    ctx.fillStyle = "#30363a";
+
+    ctx.fillRect(
+        p.x - 40 * camera.zoom,
+        p.y - 20 * camera.zoom,
+        80 * camera.zoom,
+        40 * camera.zoom
     );
 
-    ctx.fill();
+    ctx.strokeStyle = "#15191c";
+    ctx.lineWidth = 3 * camera.zoom;
 
-    ctx.strokeStyle = "#687177";
-    ctx.lineWidth = 9;
-    ctx.stroke();
+    ctx.strokeRect(
+        p.x - 40 * camera.zoom,
+        p.y - 20 * camera.zoom,
+        80 * camera.zoom,
+        40 * camera.zoom
+    );
+}
 
-    ctx.strokeStyle = "#41494e";
-    ctx.lineWidth = 22;
+function drawElectrical() {
+
+    const panels = [
+        [315, 275],
+        [350, 275],
+        [385, 275],
+        [315, 335],
+        [350, 335],
+        [385, 335]
+    ];
+
+    for (const [x, y] of panels) {
+
+        const p = worldToScreen(x, y);
+
+        ctx.fillStyle = "#303437";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            20 * camera.zoom,
+            30 * camera.zoom
+        );
+
+        ctx.fillStyle = "#b5a33e";
+
+        ctx.fillRect(
+            p.x + 5 * camera.zoom,
+            p.y + 6 * camera.zoom,
+            10 * camera.zoom,
+            3 * camera.zoom
+        );
+    }
+}
+
+function drawSecurity() {
+
+    const p = worldToScreen(345, 210);
+
+    ctx.fillStyle = "#242b2f";
+
+    ctx.fillRect(
+        p.x - 30 * camera.zoom,
+        p.y - 20 * camera.zoom,
+        60 * camera.zoom,
+        40 * camera.zoom
+    );
+
+    for (let i = 0; i < 3; i++) {
+
+        ctx.fillStyle = "#15191b";
+
+        ctx.fillRect(
+            p.x - 23 * camera.zoom + i * 17 * camera.zoom,
+            p.y - 12 * camera.zoom,
+            13 * camera.zoom,
+            16 * camera.zoom
+        );
+    }
+}
+
+function drawMedBay() {
+
+    const beds = [
+        [300, 85],
+        [300, 130]
+    ];
+
+    for (const [x, y] of beds) {
+
+        const p = worldToScreen(x, y);
+
+        ctx.fillStyle = "#d7d9d6";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            50 * camera.zoom,
+            15 * camera.zoom
+        );
+
+        ctx.fillStyle = "#7fa4a8";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            12 * camera.zoom,
+            15 * camera.zoom
+        );
+    }
+}
+
+function drawEngine(name) {
+
+    const center =
+        name === "Upper Engine"
+            ? [160, 115]
+            : [160, 425];
+
+    const p = worldToScreen(
+        center[0],
+        center[1]
+    );
+
+    ctx.save();
+
+    ctx.translate(p.x, p.y);
+
+    ctx.rotate(-0.2);
+
+    ctx.fillStyle = "#31383b";
+
+    ctx.fillRect(
+        -25 * camera.zoom,
+        -55 * camera.zoom,
+        50 * camera.zoom,
+        110 * camera.zoom
+    );
+
+    ctx.fillStyle = "#ba6539";
+
+    ctx.fillRect(
+        -14 * camera.zoom,
+        -38 * camera.zoom,
+        28 * camera.zoom,
+        76 * camera.zoom
+    );
+
+    ctx.restore();
+}
+
+function drawReactor() {
+
+    const p = worldToScreen(160, 270);
+
+    ctx.strokeStyle = "#9fa4a5";
+    ctx.lineWidth = 5 * camera.zoom;
 
     ctx.beginPath();
+
     ctx.moveTo(
-        x - w * 0.25,
-        y
+        p.x - 30 * camera.zoom,
+        p.y - 45 * camera.zoom
     );
 
     ctx.lineTo(
-        x + w * 0.25,
-        y
+        p.x - 30 * camera.zoom,
+        p.y + 45 * camera.zoom
+    );
+
+    ctx.moveTo(
+        p.x,
+        p.y - 45 * camera.zoom
+    );
+
+    ctx.lineTo(
+        p.x,
+        p.y + 45 * camera.zoom
+    );
+
+    ctx.moveTo(
+        p.x + 30 * camera.zoom,
+        p.y - 45 * camera.zoom
+    );
+
+    ctx.lineTo(
+        p.x + 30 * camera.zoom,
+        p.y + 45 * camera.zoom
     );
 
     ctx.stroke();
-}
 
-function drawConsole(x, y) {
-    ctx.fillStyle = "#171c20";
-
-    ctx.fillRect(
-        x - 45,
-        y - 35,
-        90,
-        70
-    );
-
-    ctx.strokeStyle = "#687177";
-    ctx.lineWidth = 5;
-    ctx.strokeRect(
-        x - 45,
-        y - 35,
-        90,
-        70
-    );
-
-    ctx.fillStyle = "#26343b";
-
-    ctx.fillRect(
-        x - 30,
-        y - 20,
-        60,
-        30
-    );
-}
-
-function drawWeaponConsole(x, y) {
-    drawConsole(x, y);
-
-    ctx.fillStyle = "#303b42";
+    ctx.fillStyle = "#4b8da0";
 
     ctx.beginPath();
+
     ctx.arc(
-        x,
-        y,
-        25,
+        p.x,
+        p.y,
+        14 * camera.zoom,
         0,
         Math.PI * 2
     );
@@ -820,31 +993,90 @@ function drawWeaponConsole(x, y) {
     ctx.fill();
 }
 
-function drawReactor(x, y) {
-    ctx.fillStyle = "#181d21";
+function drawWeapons() {
+
+    const p = worldToScreen(810, 100);
+
+    ctx.fillStyle = "#252d31";
 
     ctx.beginPath();
+
     ctx.arc(
-        x,
-        y,
-        105,
+        p.x,
+        p.y,
+        28 * camera.zoom,
         0,
         Math.PI * 2
     );
 
     ctx.fill();
 
-    ctx.strokeStyle = "#697177";
-    ctx.lineWidth = 9;
-    ctx.stroke();
-
-    ctx.fillStyle = "#30383e";
+    ctx.strokeStyle = "#83969b";
+    ctx.lineWidth = 5 * camera.zoom;
 
     ctx.beginPath();
+
     ctx.arc(
-        x,
-        y,
-        45,
+        p.x,
+        p.y,
+        18 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+}
+
+function drawNavigation() {
+
+    const p = worldToScreen(1035, 145);
+
+    ctx.fillStyle = "#29363b";
+
+    ctx.fillRect(
+        p.x - 25 * camera.zoom,
+        p.y - 20 * camera.zoom,
+        50 * camera.zoom,
+        40 * camera.zoom
+    );
+
+    ctx.strokeStyle = "#6c8992";
+    ctx.lineWidth = 3 * camera.zoom;
+
+    ctx.strokeRect(
+        p.x - 25 * camera.zoom,
+        p.y - 20 * camera.zoom,
+        50 * camera.zoom,
+        40 * camera.zoom
+    );
+}
+
+function drawO2() {
+
+    const p = worldToScreen(880, 250);
+
+    ctx.fillStyle = "#334b4b";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        22 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.fillStyle = "#83aaa2";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        10 * camera.zoom,
         0,
         Math.PI * 2
     );
@@ -852,545 +1084,587 @@ function drawReactor(x, y) {
     ctx.fill();
 }
 
-function drawPanel(x, y) {
-    ctx.fillStyle = "#1b2024";
+function drawCommunications() {
+
+    const p = worldToScreen(665, 500);
+
+    ctx.fillStyle = "#28343a";
 
     ctx.fillRect(
-        x,
-        y,
-        55,
-        120
+        p.x - 30 * camera.zoom,
+        p.y - 22 * camera.zoom,
+        60 * camera.zoom,
+        44 * camera.zoom
     );
 
-    ctx.strokeStyle = "#626a70";
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#82959a";
+    ctx.lineWidth = 3 * camera.zoom;
+
     ctx.strokeRect(
-        x,
-        y,
-        55,
-        120
+        p.x - 30 * camera.zoom,
+        p.y - 22 * camera.zoom,
+        60 * camera.zoom,
+        44 * camera.zoom
+    );
+
+    ctx.fillStyle = "#a4a85c";
+
+    ctx.fillRect(
+        p.x - 20 * camera.zoom,
+        p.y - 8 * camera.zoom,
+        40 * camera.zoom,
+        16 * camera.zoom
     );
 }
 
-function drawCrate(x, y) {
-    ctx.fillStyle = "#252b30";
+function drawShields() {
 
-    ctx.fillRect(
-        x,
-        y,
-        60,
-        60
-    );
+    const p = worldToScreen(885, 435);
 
-    ctx.strokeStyle = "#626a70";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(
-        x,
-        y,
-        60,
-        60
-    );
+    ctx.strokeStyle = "#8c9998";
+    ctx.lineWidth = 6 * camera.zoom;
 
     ctx.beginPath();
 
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 60, y + 60);
-
-    ctx.moveTo(x + 60, y);
-    ctx.lineTo(x, y + 60);
+    ctx.arc(
+        p.x,
+        p.y,
+        35 * camera.zoom,
+        Math.PI,
+        Math.PI * 2
+    );
 
     ctx.stroke();
+
+    ctx.fillStyle = "#5f8d94";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        12 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
 }
 
-function drawCameraWall(x, y) {
-    for (let i = -1; i <= 1; i++) {
-        drawConsole(
-            x + i * 100,
-            y
+function drawMapBorder() {
+
+    const border = [
+        [40, 120],
+        [80, 70],
+        [150, 35],
+        [350, 35],
+        [420, 55],
+        [475, 25],
+        [650, 25],
+        [710, 55],
+        [790, 10],
+        [900, 30],
+        [970, 55],
+        [1040, 30],
+        [1130, 60],
+        [1170, 110],
+        [1170, 250],
+        [1135, 280],
+        [990, 280],
+        [990, 350],
+        [1010, 400],
+        [1000, 500],
+        [950, 545],
+        [780, 555],
+        [760, 590],
+        [600, 590],
+        [550, 530],
+        [430, 530],
+        [380, 520],
+        [240, 520],
+        [210, 535],
+        [80, 525],
+        [40, 475]
+    ];
+
+    drawPolygon(
+        border,
+        "rgba(0,0,0,0)",
+        "#30373c",
+        8
+    );
+}
+
+function drawVents() {
+
+    const vents = [
+        [665, 315],
+        [855, 125],
+        [1030, 210],
+        [885, 420],
+        [350, 300],
+        [350, 190],
+        [160, 270],
+        [160, 115],
+        [160, 425]
+    ];
+
+    for (const [x, y] of vents) {
+
+        const p = worldToScreen(x, y);
+
+        ctx.save();
+
+        ctx.translate(p.x, p.y);
+
+        ctx.fillStyle = "#171b1e";
+
+        ctx.beginPath();
+
+        ctx.roundRect(
+            -10 * camera.zoom,
+            -6 * camera.zoom,
+            20 * camera.zoom,
+            12 * camera.zoom,
+            3 * camera.zoom
         );
+
+        ctx.fill();
+
+        ctx.strokeStyle = "#080a0c";
+        ctx.lineWidth = 2 * camera.zoom;
+        ctx.stroke();
+
+        ctx.restore();
     }
 }
 
-function drawO2Tank(x, y) {
-    ctx.fillStyle = "#252c31";
+function drawGrid() {
+
+    const gridSize = 25;
+
+    ctx.strokeStyle = "rgba(255,255,255,0.035)";
+    ctx.lineWidth = 1;
+
+    for (let x = 0; x < WORLD_WIDTH; x += gridSize) {
+
+        const a = worldToScreen(x, 0);
+        const b = worldToScreen(x, WORLD_HEIGHT);
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+    }
+
+    for (let y = 0; y < WORLD_HEIGHT; y += gridSize) {
+
+        const a = worldToScreen(0, y);
+        const b = worldToScreen(WORLD_WIDTH, y);
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+    }
+}
+
+function drawPlayer(player) {
+
+    if (!player || !player.alive) {
+        return;
+    }
+
+    const p = worldToScreen(
+        player.x,
+        player.y
+    );
+
+    const size = 16 * camera.zoom;
+
+    ctx.save();
+
+    ctx.translate(p.x, p.y);
+
+    // Backpack
+    ctx.fillStyle = darken(player.color, 0.65);
 
     ctx.beginPath();
 
     ctx.roundRect(
-        x - 70,
-        y - 100,
-        140,
-        200,
-        30
+        -size * 0.72,
+        -size * 0.05,
+        size * 0.35,
+        size * 0.9,
+        size * 0.12
     );
 
     ctx.fill();
 
-    ctx.strokeStyle = "#697177";
-    ctx.lineWidth = 7;
-    ctx.stroke();
-}
-
-function drawNavigationConsole(x, y) {
-    ctx.fillStyle = "#1b2024";
+    // Body
+    ctx.fillStyle = player.color;
 
     ctx.beginPath();
 
-    ctx.arc(
-        x,
-        y,
-        100,
+    ctx.roundRect(
+        -size * 0.48,
+        -size,
+        size * 0.95,
+        size * 1.65,
+        size * 0.38
+    );
+
+    ctx.fill();
+
+    // Visor
+    ctx.fillStyle = "#bce8ef";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        size * 0.08,
+        -size * 0.48,
+        size * 0.38,
+        size * 0.24,
+        0,
         0,
         Math.PI * 2
     );
 
     ctx.fill();
 
-    ctx.strokeStyle = "#697177";
-    ctx.lineWidth = 8;
-    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        size * 0.17,
+        -size * 0.56,
+        size * 0.12,
+        size * 0.07,
+        0,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.restore();
+
+    // Name
+    ctx.font =
+        `${Math.max(9, 12 * camera.zoom)}px Arial`;
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+
+    ctx.fillStyle = "#ffffff";
+
+    ctx.fillText(
+        player.name,
+        p.x,
+        p.y - 20 * camera.zoom
+    );
 }
 
-function drawShieldArray(x, y) {
-    for (let i = 0; i < 5; i++) {
-        const angle =
-            (Math.PI * 2 / 5) * i;
+function darken(color, amount) {
 
-        ctx.fillStyle = "#252c31";
+    const hex = color.replace("#", "");
+
+    if (hex.length !== 6) {
+        return color;
+    }
+
+    let r = parseInt(hex.substring(0, 2), 16);
+    let g = parseInt(hex.substring(2, 4), 16);
+    let b = parseInt(hex.substring(4, 6), 16);
+
+    r = Math.floor(r * amount);
+    g = Math.floor(g * amount);
+    b = Math.floor(b * amount);
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function drawBodies() {
+
+    if (!game || !game.bodies) {
+        return;
+    }
+
+    for (const body of game.bodies) {
+
+        const p = worldToScreen(
+            body.x,
+            body.y
+        );
+
+        ctx.save();
+
+        ctx.translate(p.x, p.y);
+
+        ctx.rotate(-0.35);
+
+        ctx.fillStyle = "#d83b3b";
 
         ctx.beginPath();
 
-        ctx.arc(
-            x + Math.cos(angle) * 100,
-            y + Math.sin(angle) * 100,
-            45,
+        ctx.ellipse(
+            0,
+            0,
+            13 * camera.zoom,
+            8 * camera.zoom,
+            0,
             0,
             Math.PI * 2
         );
 
         ctx.fill();
 
-        ctx.strokeStyle = "#697177";
-        ctx.lineWidth = 5;
-        ctx.stroke();
-    }
-}
+        ctx.fillStyle = "#ffffff";
 
-
-// ============================================================
-// MAP RENDER
-// ============================================================
-
-function drawMap() {
-    drawBackground();
-    drawHull();
-
-    for (const corridor of corridors) {
-        drawCorridor(...corridor);
-    }
-
-    for (const [name, room] of Object.entries(rooms)) {
-        drawRoom(room, name);
-    }
-}
-
-
-// ============================================================
-// CREWMATE
-// ============================================================
-
-function drawCrewmate(player) {
-    const pos = worldToScreen(
-        player.renderX ?? player.x,
-        player.renderY ?? player.y
-    );
-
-    const scale = camera.zoom;
-
-    const w = 44 * scale;
-    const h = 62 * scale;
-
-    ctx.save();
-
-    ctx.translate(pos.x, pos.y);
-
-    // Shadow
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        0,
-        h * 0.47,
-        w * 0.6,
-        h * 0.16,
-        0,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    // Backpack
-    ctx.fillStyle = player.color || "#d32f2f";
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -w * 0.64,
-        -h * 0.2,
-        w * 0.42,
-        h * 0.55,
-        w * 0.12
-    );
-
-    ctx.fill();
-
-    // Body
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -w * 0.42,
-        -h * 0.48,
-        w * 0.84,
-        h * 0.86,
-        w * 0.28
-    );
-
-    ctx.fill();
-
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = Math.max(2, 4 * scale);
-    ctx.stroke();
-
-    // Visor
-    ctx.fillStyle = "#a7e8f5";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        w * 0.06,
-        -h * 0.25,
-        w * 0.29,
-        h * 0.18,
-        -0.08,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    ctx.strokeStyle = "#1a282e";
-    ctx.lineWidth = Math.max(2, 3 * scale);
-    ctx.stroke();
-
-    // Reflection
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-
-    ctx.beginPath();
-
-    ctx.ellipse(
-        -w * 0.01,
-        -h * 0.30,
-        w * 0.08,
-        h * 0.05,
-        -0.2,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fill();
-
-    // Legs
-    ctx.fillStyle = player.color || "#d32f2f";
-
-    ctx.fillRect(
-        -w * 0.30,
-        h * 0.25,
-        w * 0.25,
-        h * 0.27
-    );
-
-    ctx.fillRect(
-        w * 0.05,
-        h * 0.25,
-        w * 0.25,
-        h * 0.27
-    );
-
-    // Name
-    if (camera.zoom > 0.4) {
         ctx.font =
-            `${Math.max(11, 14 * scale)}px Arial`;
+            `${Math.max(9, 10 * camera.zoom)}px Arial`;
 
         ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-
-        ctx.lineWidth = 4;
-
-        ctx.strokeStyle = "#000";
-
-        ctx.strokeText(
-            player.name,
-            0,
-            -h * 0.55
-        );
-
-        ctx.fillStyle = "#fff";
+        ctx.textBaseline = "middle";
 
         ctx.fillText(
-            player.name,
+            "X",
             0,
-            -h * 0.55
+            0
         );
-    }
 
-    ctx.restore();
-}
-
-
-// ============================================================
-// SMOOTH MOVEMENT
-// ============================================================
-
-function updateMovement(delta) {
-    if (!game) return;
-
-    for (const player of game.players) {
-
-        if (typeof player.renderX !== "number") {
-            player.renderX = player.x;
-            player.renderY = player.y;
-        }
-
-        if (typeof player.targetX !== "number") {
-            player.targetX = player.x;
-            player.targetY = player.y;
-        }
-
-        const dx =
-            player.targetX -
-            player.renderX;
-
-        const dy =
-            player.targetY -
-            player.renderY;
-
-        const distance =
-            Math.hypot(dx, dy);
-
-        if (distance < 0.01) {
-            player.renderX =
-                player.targetX;
-
-            player.renderY =
-                player.targetY;
-
-            continue;
-        }
-
-        /*
-         * Movement speed is deliberately constant.
-         * The AI doesn't teleport between server updates.
-         */
-
-        const speed =
-            2.5 * delta * 60;
-
-        const amount =
-            Math.min(speed, distance);
-
-        player.renderX +=
-            dx / distance * amount;
-
-        player.renderY +=
-            dy / distance * amount;
+        ctx.restore();
     }
 }
 
+function drawTopBar() {
 
-// ============================================================
-// GAME FETCH
-// ============================================================
+    if (!game) {
+        return;
+    }
 
-async function fetchGame() {
+    ctx.fillStyle = "rgba(7, 9, 12, 0.88)";
+
+    ctx.fillRect(
+        0,
+        0,
+        window.innerWidth,
+        52
+    );
+
+    ctx.fillStyle = "#ffffff";
+
+    ctx.font = "bold 17px Arial";
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+
+    ctx.fillText(
+        "AI AMONG US",
+        20,
+        26
+    );
+
+    ctx.font = "13px Arial";
+
+    ctx.fillStyle = "#aeb5ba";
+
+    ctx.fillText(
+        `Round ${game.round || 1}`,
+        160,
+        26
+    );
+}
+
+function draw() {
+
+    drawMapBackground();
+
+    drawShipShadow();
+
+    drawGrid();
+
+    drawCorridors();
+
+    drawRooms();
+
+    drawMapBorder();
+
+    drawVents();
+
+    drawBodies();
+
+    if (game && game.players) {
+
+        for (const player of game.players) {
+            drawPlayer(player);
+        }
+    }
+
+    drawTopBar();
+
+    requestAnimationFrame(draw);
+}
+
+async function loadGame() {
+
     try {
+
         const response =
             await fetch("/api/game", {
                 cache: "no-store"
             });
 
-        if (!response.ok) return;
-
-        const next =
-            await response.json();
-
-        if (!next.players) return;
-
-        if (!game) {
-            game = next;
-
-            for (const player of game.players) {
-                player.renderX = player.x;
-                player.renderY = player.y;
-                player.targetX = player.x;
-                player.targetY = player.y;
-            }
-
-            return;
+        if (!response.ok) {
+            throw new Error("Failed to load game");
         }
 
-        for (const nextPlayer of next.players) {
+        game = await response.json();
 
-            const current =
-                game.players.find(
-                    p => p.id === nextPlayer.id
-                );
-
-            if (!current) {
-                nextPlayer.renderX =
-                    nextPlayer.x;
-
-                nextPlayer.renderY =
-                    nextPlayer.y;
-
-                nextPlayer.targetX =
-                    nextPlayer.x;
-
-                nextPlayer.targetY =
-                    nextPlayer.y;
-
-                game.players.push(nextPlayer);
-
-                continue;
-            }
-
-            current.targetX =
-                nextPlayer.x;
-
-            current.targetY =
-                nextPlayer.y;
-
-            current.name =
-                nextPlayer.name;
-
-            current.color =
-                nextPlayer.color;
-
-            current.alive =
-                nextPlayer.alive;
-
-            current.room =
-                nextPlayer.room;
-
-            current.action =
-                nextPlayer.action;
-        }
-
-        game.phase = next.phase;
-        game.round = next.round;
     } catch (error) {
-        console.error(error);
+
+        console.error(
+            "Could not load game:",
+            error
+        );
     }
 }
 
+async function createNewGame() {
 
-// ============================================================
-// NEW GAME
-// ============================================================
+    newGameButton.disabled = true;
 
-newGameButton.addEventListener(
-    "click",
-    async () => {
+    try {
 
-        newGameButton.disabled = true;
-
-        try {
-            await fetch(
-                "/api/game/new",
-                {
-                    method: "POST"
+        const response =
+            await fetch("/api/game/new", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
                 }
-            );
+            });
 
-            game = null;
-
-            camera.x = 1600;
-            camera.y = 950;
-            camera.zoom = 0.62;
-
-            clampCamera();
-
-            await fetchGame();
-
-        } catch (error) {
-            console.error(error);
+        if (!response.ok) {
+            throw new Error("Failed to create game");
         }
+
+        game = await response.json();
+
+    } catch (error) {
+
+        console.error(
+            "Could not create game:",
+            error
+        );
+
+    } finally {
 
         newGameButton.disabled = false;
     }
-);
-
-
-// ============================================================
-// MAIN LOOP
-// ============================================================
-
-function render() {
-    const now = performance.now();
-
-    let delta =
-        (now - lastTime) / 1000;
-
-    lastTime = now;
-
-    delta = Math.min(delta, 0.05);
-
-    updateMovement(delta);
-
-    ctx.clearRect(
-        0,
-        0,
-        window.innerWidth,
-        window.innerHeight
-    );
-
-    ctx.save();
-
-    ctx.translate(
-        window.innerWidth / 2,
-        window.innerHeight / 2
-    );
-
-    ctx.scale(
-        camera.zoom,
-        camera.zoom
-    );
-
-    ctx.translate(
-        -camera.x,
-        -camera.y
-    );
-
-    drawMap();
-
-    if (game) {
-        for (const player of game.players) {
-            drawCrewmate(player);
-        }
-    }
-
-    ctx.restore();
-
-    requestAnimationFrame(render);
 }
 
+newGameButton.addEventListener(
+    "click",
+    createNewGame
+);
 
-fetchGame();
+canvas.addEventListener(
+    "mousedown",
+    event => {
+
+        dragging = true;
+
+        canvas.classList.add("dragging");
+
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+
+        cameraStartX = camera.x;
+        cameraStartY = camera.y;
+    }
+);
+
+window.addEventListener(
+    "mouseup",
+    () => {
+
+        dragging = false;
+
+        canvas.classList.remove("dragging");
+    }
+);
+
+window.addEventListener(
+    "mousemove",
+    event => {
+
+        if (!dragging) {
+            return;
+        }
+
+        camera.x =
+            cameraStartX +
+            (event.clientX - dragStartX);
+
+        camera.y =
+            cameraStartY +
+            (event.clientY - dragStartY);
+    }
+);
+
+canvas.addEventListener(
+    "wheel",
+    event => {
+
+        event.preventDefault();
+
+        const mouseX = event.clientX;
+        const mouseY = event.clientY;
+
+        const before =
+            screenToWorld(mouseX, mouseY);
+
+        const zoomFactor =
+            event.deltaY < 0
+                ? 1.1
+                : 0.9;
+
+        camera.zoom *= zoomFactor;
+
+        camera.zoom =
+            Math.max(
+                0.35,
+                Math.min(3.5, camera.zoom)
+            );
+
+        const after =
+            screenToWorld(mouseX, mouseY);
+
+        camera.x +=
+            (after.x - before.x) *
+            camera.zoom;
+
+        camera.y +=
+            (after.y - before.y) *
+            camera.zoom;
+    },
+    { passive: false }
+);
+
+window.addEventListener(
+    "resize",
+    resizeCanvas
+);
 
 setInterval(
-    fetchGame,
+    loadGame,
     500
 );
 
-requestAnimationFrame(render);
+resizeCanvas();
+
+loadGame();
+
+requestAnimationFrame(draw);
