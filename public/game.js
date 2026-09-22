@@ -1,1033 +1,1111 @@
 const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
 
-const WORLD_W = 240;
-const WORLD_H = 160;
+const WORLD_W = 220;
+const WORLD_H = 150;
 
-let game = null;
+const PLAYER_SPEED = 0.18;
+
+const keys = {};
+
+let player = {
+    x: 110,
+    y: 75,
+    radius: 1.2
+};
 
 let camera = {
-    x: WORLD_W / 2,
-    y: WORLD_H / 2,
-    zoom: 4
+    x: player.x,
+    y: player.y,
+    zoom: 5
 };
 
-let dragging = false;
-let dragStart = null;
-let cameraStart = null;
+let tasks = [];
+let completedTasks = 0;
+let activeTask = null;
 
-const COLORS = {
-    background: "#07090c",
-    floor: "#161a20",
-    floor2: "#1c2128",
-    wall: "#59616b",
-    wallDark: "#30363d",
-    corridor: "#101419",
-    corridorEdge: "#3c444d",
-    text: "#ffffff",
-    muted: "#9aa3ad",
-    task: "#f4d35e",
-    taskDone: "#5fd17a",
-    body: "#d83b3b",
-    emergency: "#e33b3b"
-};
+const walls = [];
+const rooms = [];
+
+/* =========================================================
+   MAP
+   ========================================================= */
+
+function addRoom(name, x, y, w, h) {
+    rooms.push({
+        name,
+        x,
+        y,
+        w,
+        h
+    });
+}
+
+function addWall(x, y, w, h) {
+    walls.push({
+        x,
+        y,
+        w,
+        h
+    });
+}
 
 /*
-    BIG SKELD-STYLE MAP
+    Main layout.
 
-    240 × 160
-
-    Everything has a lot more breathing room.
+    Large central hub with six wings.
 */
 
-const ROOMS = {
-    "Upper Engine": {
-        x: 8,
-        y: 12,
-        w: 42,
-        h: 28
-    },
+addRoom("Cafeteria", 82, 57, 56, 36);
 
-    Reactor: {
-        x: 8,
-        y: 60,
-        w: 42,
-        h: 34
-    },
+addRoom("Upper Engine", 18, 12, 38, 28);
+addRoom("Lower Engine", 18, 110, 38, 28);
 
-    "Lower Engine": {
-        x: 8,
-        y: 112,
-        w: 42,
-        h: 30
-    },
+addRoom("Reactor", 8, 60, 38, 32);
 
-    MedBay: {
-        x: 62,
-        y: 12,
-        w: 34,
-        h: 28
-    },
+addRoom("MedBay", 52, 12, 28, 30);
+addRoom("Security", 52, 108, 28, 30);
 
-    Security: {
-        x: 62,
-        y: 112,
-        w: 34,
-        h: 30
-    },
+addRoom("Weapons", 150, 12, 36, 30);
+addRoom("Navigation", 190, 52, 25, 34);
 
-    Cafeteria: {
-        x: 103,
-        y: 48,
-        w: 46,
-        h: 42
-    },
+addRoom("Admin", 142, 57, 32, 28);
+addRoom("O2", 145, 105, 30, 30);
 
-    Weapons: {
-        x: 165,
-        y: 10,
-        w: 34,
-        h: 32
-    },
+addRoom("Storage", 82, 105, 56, 35);
 
-    Navigation: {
-        x: 207,
-        y: 48,
-        w: 28,
-        h: 38
-    },
-
-    O2: {
-        x: 165,
-        y: 102,
-        w: 34,
-        h: 30
-    },
-
-    Storage: {
-        x: 103,
-        y: 102,
-        w: 46,
-        h: 40
-    },
-
-    Admin: {
-        x: 165,
-        y: 54,
-        w: 34,
-        h: 30
-    },
-
-    Communications: {
-        x: 103,
-        y: 10,
-        w: 38,
-        h: 25
-    },
-
-    Shields: {
-        x: 207,
-        y: 104,
-        w: 28,
-        h: 30
-    },
-
-    Electrical: {
-        x: 60,
-        y: 52,
-        w: 36,
-        h: 26
-    }
-};
+addRoom("Electrical", 45, 57, 30, 30);
+addRoom("Communications", 185, 105, 30, 30);
 
 /*
-    Long, deliberate corridors.
+    Corridor walls / boundaries.
+
+    The map is intentionally open in the middle,
+    but rooms are separated by solid walls.
 */
 
-const CORRIDORS = [
-    // left vertical
+/* Upper Engine */
+addWall(18, 10, 38, 2);
+addWall(18, 40, 38, 2);
+addWall(16, 12, 2, 28);
+addWall(56, 12, 2, 28);
+
+/* Lower Engine */
+addWall(18, 108, 38, 2);
+addWall(18, 138, 38, 2);
+addWall(16, 110, 2, 28);
+addWall(56, 110, 2, 28);
+
+/* Reactor */
+addWall(8, 58, 38, 2);
+addWall(8, 92, 38, 2);
+addWall(6, 60, 2, 32);
+addWall(46, 60, 2, 32);
+
+/* MedBay */
+addWall(52, 10, 28, 2);
+addWall(52, 42, 28, 2);
+addWall(50, 12, 2, 30);
+addWall(80, 12, 2, 30);
+
+/* Security */
+addWall(52, 106, 28, 2);
+addWall(52, 138, 28, 2);
+addWall(50, 108, 2, 30);
+addWall(80, 108, 2, 30);
+
+/* Cafeteria */
+addWall(82, 55, 56, 2);
+addWall(82, 93, 56, 2);
+addWall(80, 57, 2, 36);
+addWall(138, 57, 2, 36);
+
+/* Weapons */
+addWall(150, 10, 36, 2);
+addWall(150, 42, 36, 2);
+addWall(148, 12, 2, 30);
+addWall(186, 12, 2, 30);
+
+/* Navigation */
+addWall(190, 50, 25, 2);
+addWall(190, 86, 25, 2);
+addWall(188, 52, 2, 34);
+addWall(215, 52, 2, 34);
+
+/* Admin */
+addWall(142, 55, 32, 2);
+addWall(142, 85, 32, 2);
+addWall(140, 57, 2, 28);
+addWall(174, 57, 2, 28);
+
+/* O2 */
+addWall(145, 103, 30, 2);
+addWall(145, 137, 30, 2);
+addWall(143, 105, 2, 32);
+addWall(175, 105, 2, 32);
+
+/* Storage */
+addWall(82, 103, 56, 2);
+addWall(82, 140, 56, 2);
+addWall(80, 105, 2, 35);
+addWall(138, 105, 2, 35);
+
+/* Electrical */
+addWall(45, 55, 30, 2);
+addWall(45, 89, 30, 2);
+addWall(43, 57, 2, 32);
+addWall(75, 57, 2, 32);
+
+/* Communications */
+addWall(185, 103, 30, 2);
+addWall(185, 137, 30, 2);
+addWall(183, 105, 2, 32);
+addWall(215, 105, 2, 32);
+
+/*
+    Create openings in walls by not putting walls
+    across these corridor entrances.
+
+    The spaces between wall sections are the doors.
+*/
+
+/* =========================================================
+   TASKS
+   ========================================================= */
+
+const TASK_DATA = [
     {
+        name: "Fix Wiring",
+        room: "Electrical",
+        x: 54,
+        y: 70,
+        duration: 2200
+    },
+
+    {
+        name: "Calibrate Reactor",
+        room: "Reactor",
         x: 25,
-        y: 40,
-        w: 12,
-        h: 20
+        y: 76,
+        duration: 2800
     },
 
     {
-        x: 25,
-        y: 94,
-        w: 12,
-        h: 18
-    },
-
-    // upper engine -> medbay
-    {
-        x: 50,
-        y: 22,
-        w: 12,
-        h: 10
-    },
-
-    // reactor -> electrical
-    {
-        x: 50,
-        y: 68,
-        w: 12,
-        h: 10
-    },
-
-    // electrical -> cafeteria
-    {
-        x: 90,
-        y: 62,
-        w: 18,
-        h: 10
-    },
-
-    // cafeteria -> storage
-    {
-        x: 120,
-        y: 90,
-        w: 12,
-        h: 12
-    },
-
-    // cafeteria -> admin
-    {
-        x: 149,
-        y: 62,
-        w: 16,
-        h: 12
-    },
-
-    // admin -> navigation
-    {
-        x: 199,
-        y: 62,
-        w: 8,
-        h: 12
-    },
-
-    // weapons -> cafeteria
-    {
-        x: 149,
-        y: 24,
-        w: 16,
-        h: 12
+        name: "Inspect MedBay",
+        room: "MedBay",
+        x: 65,
+        y: 25,
+        duration: 2200
     },
 
     {
+        name: "Align Engine",
+        room: "Upper Engine",
+        x: 35,
+        y: 25,
+        duration: 2500
+    },
+
+    {
+        name: "Fuel Engine",
+        room: "Lower Engine",
+        x: 35,
+        y: 125,
+        duration: 2500
+    },
+
+    {
+        name: "Upload Data",
+        room: "Admin",
         x: 157,
-        y: 30,
-        w: 12,
-        h: 30
+        y: 70,
+        duration: 2500
     },
 
-    // admin -> O2
     {
-        x: 178,
-        y: 84,
-        w: 10,
-        h: 18
+        name: "Clear Asteroids",
+        room: "Weapons",
+        x: 168,
+        y: 26,
+        duration: 3000
     },
 
-    // O2 -> shields
     {
+        name: "Navigate",
+        room: "Navigation",
+        x: 203,
+        y: 68,
+        duration: 2400
+    },
+
+    {
+        name: "Clean O2",
+        room: "O2",
+        x: 158,
+        y: 120,
+        duration: 2300
+    },
+
+    {
+        name: "Repair Communications",
+        room: "Communications",
         x: 199,
-        y: 114,
-        w: 8,
-        h: 10
+        y: 120,
+        duration: 2500
     },
 
-    // navigation -> shields
     {
-        x: 219,
-        y: 86,
-        w: 10,
-        h: 18
-    },
-
-    // storage -> comms
-    {
-        x: 116,
-        y: 35,
-        w: 12,
-        h: 67
-    },
-
-    // storage -> security
-    {
-        x: 84,
-        y: 92,
-        w: 12,
-        h: 20
+        name: "Organize Storage",
+        room: "Storage",
+        x: 110,
+        y: 122,
+        duration: 2200
     }
 ];
 
-function resize() {
-    canvas.width = window.innerWidth * devicePixelRatio;
-    canvas.height = window.innerHeight * devicePixelRatio;
+tasks = TASK_DATA.map((task, index) => ({
+    ...task,
+    id: index,
+    complete: false
+}));
 
-    canvas.style.width = `${window.innerWidth}px`;
-    canvas.style.height = `${window.innerHeight}px`;
+/* =========================================================
+   INPUT
+   ========================================================= */
 
-    ctx.setTransform(
-        devicePixelRatio,
-        0,
-        0,
-        devicePixelRatio,
-        0,
-        0
+window.addEventListener("keydown", event => {
+    keys[event.key.toLowerCase()] = true;
+
+    if (
+        event.key === " " ||
+        event.key === "e"
+    ) {
+        interact();
+    }
+});
+
+window.addEventListener("keyup", event => {
+    keys[event.key.toLowerCase()] = false;
+});
+
+/* =========================================================
+   COLLISION
+   ========================================================= */
+
+function circleRectCollision(
+    cx,
+    cy,
+    radius,
+    rect
+) {
+    const closestX = Math.max(
+        rect.x,
+        Math.min(cx, rect.x + rect.w)
+    );
+
+    const closestY = Math.max(
+        rect.y,
+        Math.min(cy, rect.y + rect.h)
+    );
+
+    const dx = cx - closestX;
+    const dy = cy - closestY;
+
+    return (
+        dx * dx +
+        dy * dy <
+        radius * radius
     );
 }
 
-window.addEventListener("resize", resize);
-resize();
+function collides(x, y) {
+    for (const wall of walls) {
+        if (
+            circleRectCollision(
+                x,
+                y,
+                player.radius,
+                wall
+            )
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function movePlayer(dx, dy) {
+    /*
+        Separate X/Y collision lets the player slide
+        along walls instead of getting stuck.
+    */
+
+    const nextX =
+        player.x + dx;
+
+    if (!collides(nextX, player.y)) {
+        player.x = nextX;
+    }
+
+    const nextY =
+        player.y + dy;
+
+    if (!collides(player.x, nextY)) {
+        player.y = nextY;
+    }
+
+    player.x = Math.max(
+        1,
+        Math.min(
+            WORLD_W - 1,
+            player.x
+        )
+    );
+
+    player.y = Math.max(
+        1,
+        Math.min(
+            WORLD_H - 1,
+            player.y
+        )
+    );
+}
+
+/* =========================================================
+   TASK INTERACTION
+   ========================================================= */
+
+function nearestTask() {
+    let best = null;
+    let bestDistance = Infinity;
+
+    for (const task of tasks) {
+        if (task.complete) {
+            continue;
+        }
+
+        const dx =
+            player.x - task.x;
+
+        const dy =
+            player.y - task.y;
+
+        const d =
+            Math.hypot(dx, dy);
+
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = task;
+        }
+    }
+
+    if (bestDistance <= 3) {
+        return best;
+    }
+
+    return null;
+}
+
+function interact() {
+    if (activeTask) {
+        return;
+    }
+
+    const task = nearestTask();
+
+    if (!task) {
+        return;
+    }
+
+    activeTask = {
+        task,
+        started: performance.now()
+    };
+}
+
+function updateTask() {
+    if (!activeTask) {
+        return;
+    }
+
+    const elapsed =
+        performance.now() -
+        activeTask.started;
+
+    const duration =
+        activeTask.task.duration;
+
+    if (elapsed >= duration) {
+        activeTask.task.complete = true;
+
+        completedTasks++;
+
+        activeTask = null;
+    }
+}
+
+/* =========================================================
+   CAMERA
+   ========================================================= */
+
+function updateCamera() {
+    /*
+        Smooth follow.
+    */
+
+    camera.x +=
+        (player.x - camera.x) * 0.12;
+
+    camera.y +=
+        (player.y - camera.y) * 0.12;
+
+    const halfWidth =
+        window.innerWidth /
+        camera.zoom /
+        2;
+
+    const halfHeight =
+        window.innerHeight /
+        camera.zoom /
+        2;
+
+    camera.x = Math.max(
+        halfWidth,
+        Math.min(
+            WORLD_W - halfWidth,
+            camera.x
+        )
+    );
+
+    camera.y = Math.max(
+        halfHeight,
+        Math.min(
+            WORLD_H - halfHeight,
+            camera.y
+        )
+    );
+}
+
+/* =========================================================
+   DRAWING
+   ========================================================= */
 
 function worldToScreen(x, y) {
     return {
         x:
-            (x - camera.x) * camera.zoom +
+            (x - camera.x) *
+                camera.zoom +
             window.innerWidth / 2,
 
         y:
-            (y - camera.y) * camera.zoom +
+            (y - camera.y) *
+                camera.zoom +
             window.innerHeight / 2
     };
 }
 
-function screenToWorld(x, y) {
-    return {
-        x:
-            (x - window.innerWidth / 2) /
-                camera.zoom +
-            camera.x,
-
-        y:
-            (y - window.innerHeight / 2) /
-                camera.zoom +
-            camera.y
-    };
-}
-
-function rectWorld(rect, fill, stroke = null) {
-    const topLeft = worldToScreen(rect.x, rect.y);
+function drawRect(
+    x,
+    y,
+    w,
+    h,
+    fill,
+    stroke = null
+) {
+    const p =
+        worldToScreen(x, y);
 
     ctx.fillStyle = fill;
 
     ctx.fillRect(
-        topLeft.x,
-        topLeft.y,
-        rect.w * camera.zoom,
-        rect.h * camera.zoom
+        p.x,
+        p.y,
+        w * camera.zoom,
+        h * camera.zoom
     );
 
     if (stroke) {
         ctx.strokeStyle = stroke;
-        ctx.lineWidth = Math.max(1, camera.zoom);
+        ctx.lineWidth =
+            Math.max(
+                1,
+                camera.zoom * 0.35
+            );
+
         ctx.strokeRect(
-            topLeft.x,
-            topLeft.y,
-            rect.w * camera.zoom,
-            rect.h * camera.zoom
+            p.x,
+            p.y,
+            w * camera.zoom,
+            h * camera.zoom
         );
     }
 }
 
-function drawCorridors() {
-    for (const corridor of CORRIDORS) {
-        rectWorld(
-            corridor,
-            COLORS.corridor,
-            COLORS.corridorEdge
-        );
-    }
-}
+function drawMap() {
+    ctx.fillStyle = "#07090c";
 
-function drawRooms() {
-    for (const [name, room] of Object.entries(ROOMS)) {
-        rectWorld(
-            room,
-            COLORS.floor,
-            COLORS.wall
-        );
-
-        /*
-            Inner floor.
-        */
-        rectWorld(
-            {
-                x: room.x + 2,
-                y: room.y + 2,
-                w: room.w - 4,
-                h: room.h - 4
-            },
-            COLORS.floor2
-        );
-
-        drawRoomName(name, room);
-    }
-}
-
-function drawRoomName(name, room) {
-    const center = worldToScreen(
-        room.x + room.w / 2,
-        room.y + room.h / 2
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
     );
-
-    ctx.save();
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    const size = Math.max(
-        9,
-        Math.min(20, camera.zoom * 3.2)
-    );
-
-    ctx.font = `bold ${size}px Arial`;
-
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-
-    ctx.fillText(
-        name.toUpperCase(),
-        center.x,
-        center.y
-    );
-
-    ctx.restore();
-}
-
-function drawCafeteria() {
-    const room = ROOMS.Cafeteria;
 
     /*
-        Four large tables.
+        Floor areas.
     */
 
+    for (const room of rooms) {
+        drawRect(
+            room.x,
+            room.y,
+            room.w,
+            room.h,
+            "#171c22",
+            "#69737e"
+        );
+
+        drawRect(
+            room.x + 2,
+            room.y + 2,
+            room.w - 4,
+            room.h - 4,
+            "#1d232a"
+        );
+
+        const center =
+            worldToScreen(
+                room.x + room.w / 2,
+                room.y + room.h / 2
+            );
+
+        ctx.font =
+            `${Math.max(
+                10,
+                camera.zoom * 2.2
+            )}px Arial`;
+
+        ctx.textAlign = "center";
+
+        ctx.fillStyle =
+            "rgba(255,255,255,0.25)";
+
+        ctx.fillText(
+            room.name.toUpperCase(),
+            center.x,
+            center.y
+        );
+    }
+
+    /*
+        Corridors are the spaces between rooms,
+        giving the map its open ship layout.
+    */
+
+    drawRect(
+        56,
+        20,
+        8,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        76,
+        67,
+        10,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        132,
+        67,
+        12,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        172,
+        65,
+        20,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        130,
+        25,
+        20,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        180,
+        25,
+        14,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        126,
+        85,
+        10,
+        22,
+        "#10151a"
+    );
+
+    drawRect(
+        55,
+        85,
+        10,
+        25,
+        "#10151a"
+    );
+
+    drawRect(
+        136,
+        115,
+        12,
+        10,
+        "#10151a"
+    );
+
+    drawRect(
+        173,
+        115,
+        14,
+        10,
+        "#10151a"
+    );
+
+    /*
+        Walls.
+    */
+
+    for (const wall of walls) {
+        drawRect(
+            wall.x,
+            wall.y,
+            wall.w,
+            wall.h,
+            "#4c5661",
+            "#77828e"
+        );
+    }
+}
+
+function drawCafeteriaDetails() {
+    const room =
+        rooms.find(
+            r => r.name === "Cafeteria"
+        );
+
     const tables = [
-        {
-            x: room.x + 10,
-            y: room.y + 9
-        },
-
-        {
-            x: room.x + room.w - 10,
-            y: room.y + 9
-        },
-
-        {
-            x: room.x + 10,
-            y: room.y + room.h - 9
-        },
-
-        {
-            x: room.x + room.w - 10,
-            y: room.y + room.h - 9
-        }
+        [95, 68],
+        [125, 68],
+        [95, 83],
+        [125, 83]
     ];
 
-    for (const table of tables) {
-        const p = worldToScreen(
-            table.x,
-            table.y
-        );
+    for (const [x, y] of tables) {
+        const p =
+            worldToScreen(x, y);
 
         ctx.beginPath();
 
         ctx.arc(
             p.x,
             p.y,
-            5 * camera.zoom,
+            4 * camera.zoom,
             0,
             Math.PI * 2
         );
 
-        ctx.fillStyle = "#343b44";
+        ctx.fillStyle = "#303943";
         ctx.fill();
 
-        ctx.strokeStyle = "#66717d";
-        ctx.lineWidth = Math.max(1, camera.zoom);
+        ctx.strokeStyle = "#7a8590";
+
         ctx.stroke();
     }
 
-    /*
-        Emergency table.
-    */
-
-    const center = worldToScreen(
-        room.x + room.w / 2,
-        room.y + room.h / 2
-    );
-
-    ctx.beginPath();
-
-    ctx.arc(
-        center.x,
-        center.y,
-        6 * camera.zoom,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fillStyle = "#303740";
-    ctx.fill();
-
-    ctx.strokeStyle = COLORS.emergency;
-    ctx.lineWidth = Math.max(
-        2,
-        camera.zoom * 0.8
-    );
-
-    ctx.stroke();
-
-    ctx.beginPath();
-
-    ctx.arc(
-        center.x,
-        center.y,
-        1.8 * camera.zoom,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.fillStyle = COLORS.emergency;
-    ctx.fill();
-}
-
-function drawStorage() {
-    const room = ROOMS.Storage;
-
-    for (let y = room.y + 7; y < room.y + room.h - 4; y += 8) {
-        for (
-            let x = room.x + 7;
-            x < room.x + room.w - 4;
-            x += 9
-        ) {
-            rectWorld(
-                {
-                    x,
-                    y,
-                    w: 6,
-                    h: 5
-                },
-                "#2d343c",
-                "#555e68"
-            );
-        }
-    }
-}
-
-function drawElectrical() {
-    const room = ROOMS.Electrical;
-
-    for (
-        let x = room.x + 5;
-        x < room.x + room.w - 3;
-        x += 7
-    ) {
-        rectWorld(
-            {
-                x,
-                y: room.y + 7,
-                w: 4,
-                h: 12
-            },
-            "#252c33",
-            "#68727c"
+    const button =
+        worldToScreen(
+            room.x + room.w / 2,
+            room.y + room.h / 2
         );
-    }
-}
-
-function drawReactor() {
-    const room = ROOMS.Reactor;
-
-    const center = worldToScreen(
-        room.x + room.w / 2,
-        room.y + room.h / 2
-    );
-
-    const radius = 9 * camera.zoom;
 
     ctx.beginPath();
 
     ctx.arc(
-        center.x,
-        center.y,
-        radius,
+        button.x,
+        button.y,
+        3 * camera.zoom,
         0,
         Math.PI * 2
     );
 
-    ctx.fillStyle = "#20262d";
+    ctx.fillStyle = "#c73737";
     ctx.fill();
 
-    ctx.strokeStyle = "#727d88";
-    ctx.lineWidth = Math.max(2, camera.zoom);
+    ctx.strokeStyle = "#ffffff";
 
     ctx.stroke();
-
-    ctx.beginPath();
-
-    ctx.arc(
-        center.x,
-        center.y,
-        radius * 0.55,
-        0,
-        Math.PI * 2
-    );
-
-    ctx.strokeStyle = "#aeb7c0";
-
-    ctx.stroke();
-}
-
-function drawWeapons() {
-    const room = ROOMS.Weapons;
-
-    const center = worldToScreen(
-        room.x + room.w / 2,
-        room.y + room.h / 2
-    );
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        center.x - 10 * camera.zoom,
-        center.y + 5 * camera.zoom
-    );
-
-    ctx.lineTo(
-        center.x + 12 * camera.zoom,
-        center.y
-    );
-
-    ctx.lineTo(
-        center.x - 10 * camera.zoom,
-        center.y - 5 * camera.zoom
-    );
-
-    ctx.closePath();
-
-    ctx.fillStyle = "#343c45";
-    ctx.fill();
-
-    ctx.strokeStyle = "#737e89";
-    ctx.stroke();
-}
-
-function drawSecurity() {
-    const room = ROOMS.Security;
-
-    for (let i = 0; i < 4; i++) {
-        rectWorld(
-            {
-                x: room.x + 5 + i * 6,
-                y: room.y + 8,
-                w: 4,
-                h: 5
-            },
-            "#252c34",
-            "#66727d"
-        );
-    }
-}
-
-function drawAdmin() {
-    const room = ROOMS.Admin;
-
-    rectWorld(
-        {
-            x: room.x + 8,
-            y: room.y + 9,
-            w: room.w - 16,
-            h: 8
-        },
-        "#252c34",
-        "#69747f"
-    );
 }
 
 function drawTasks() {
-    if (!game) return;
+    for (const task of tasks) {
+        if (task.complete) {
+            continue;
+        }
 
-    for (const player of game.players) {
-        for (const task of player.tasks || []) {
-            if (task.complete) {
-                continue;
-            }
-
-            const p = worldToScreen(
+        const p =
+            worldToScreen(
                 task.x,
                 task.y
             );
 
-            const pulse =
-                Math.sin(Date.now() / 250) * 2;
-
-            ctx.beginPath();
-
-            ctx.arc(
-                p.x,
-                p.y,
-                (3.5 + pulse) * camera.zoom,
-                0,
-                Math.PI * 2
-            );
-
-            ctx.fillStyle = COLORS.task;
-            ctx.globalAlpha = 0.7;
-
-            ctx.fill();
-
-            ctx.globalAlpha = 1;
-        }
-    }
-}
-
-function drawBodies() {
-    if (!game) return;
-
-    for (const body of game.bodies) {
-        const p = worldToScreen(
-            body.x,
-            body.y
-        );
-
-        const size = 2.5 * camera.zoom;
-
-        ctx.save();
-
-        ctx.translate(p.x, p.y);
-
-        ctx.fillStyle = COLORS.body;
-
-        ctx.beginPath();
-
-        ctx.arc(
-            0,
-            -size * 0.6,
-            size * 0.6,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-
-        ctx.fillRect(
-            -size * 0.6,
-            0,
-            size * 1.2,
-            size * 1.5
-        );
-
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = Math.max(
-            1,
-            camera.zoom * 0.5
-        );
-
-        ctx.stroke();
-
-        ctx.restore();
-    }
-}
-
-function drawPlayers() {
-    if (!game) return;
-
-    for (const player of game.players) {
-        const p = worldToScreen(
-            player.x,
-            player.y
-        );
-
-        const radius =
-            Math.max(
-                4,
-                1.5 * camera.zoom
-            );
-
-        if (!player.alive) {
-            continue;
-        }
-
-        /*
-            Shadow.
-        */
-
-        ctx.beginPath();
-
-        ctx.ellipse(
-            p.x,
-            p.y + radius * 0.8,
-            radius * 0.8,
-            radius * 0.35,
-            0,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fillStyle = "rgba(0,0,0,0.45)";
-        ctx.fill();
-
-        /*
-            Body.
-        */
+        const pulse =
+            1 +
+            Math.sin(
+                performance.now() / 300
+            ) *
+            0.15;
 
         ctx.beginPath();
 
         ctx.arc(
             p.x,
             p.y,
-            radius,
+            2.5 *
+                camera.zoom *
+                pulse,
             0,
             Math.PI * 2
         );
 
-        ctx.fillStyle = player.color;
+        ctx.fillStyle = "#e7c84b";
+
         ctx.fill();
 
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = Math.max(
-            1,
-            camera.zoom * 0.35
-        );
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.7)";
 
         ctx.stroke();
-
-        /*
-            Name.
-        */
-
-        if (camera.zoom >= 2.5) {
-            ctx.font =
-                `${Math.max(
-                    9,
-                    camera.zoom * 2
-                )}px Arial`;
-
-            ctx.textAlign = "center";
-
-            ctx.fillStyle = "#ffffff";
-
-            ctx.fillText(
-                player.name,
-                p.x,
-                p.y - radius - 5
-            );
-        }
     }
 }
 
-function drawTopUI() {
-    if (!game) return;
+function drawPlayer() {
+    const p =
+        worldToScreen(
+            player.x,
+            player.y
+        );
 
-    ctx.save();
+    const r =
+        player.radius *
+        camera.zoom;
 
-    ctx.fillStyle = "rgba(7,9,12,0.86)";
+    /*
+        Shadow.
+    */
 
-    ctx.fillRect(
+    ctx.beginPath();
+
+    ctx.ellipse(
+        p.x,
+        p.y + r * 0.8,
+        r * 0.9,
+        r * 0.35,
         0,
         0,
-        window.innerWidth,
-        54
+        Math.PI * 2
     );
 
-    ctx.font = "bold 16px Arial";
+    ctx.fillStyle =
+        "rgba(0,0,0,0.45)";
+
+    ctx.fill();
+
+    /*
+        Body.
+    */
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        r,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle = "#e8e8e8";
+
+    ctx.fill();
+
+    ctx.strokeStyle = "#ffffff";
+
+    ctx.lineWidth = 1.5;
+
+    ctx.stroke();
+
+    /*
+        Visor.
+    */
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        p.x + r * 0.25,
+        p.y - r * 0.25,
+        r * 0.48,
+        r * 0.3,
+        -0.2,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle = "#4c9bb0";
+
+    ctx.fill();
+
+    ctx.strokeStyle = "#b8f0ff";
+
+    ctx.stroke();
+}
+
+function drawUI() {
+    /*
+        Top-left.
+    */
+
+    ctx.fillStyle =
+        "rgba(8,10,13,0.9)";
+
+    ctx.fillRect(
+        15,
+        15,
+        230,
+        75
+    );
 
     ctx.fillStyle = "#ffffff";
+
+    ctx.font =
+        "bold 18px Arial";
 
     ctx.textAlign = "left";
 
     ctx.fillText(
-        `TASKS ${game.taskCompleted}/${game.totalTasks}`,
-        18,
-        33
+        "TASKS",
+        30,
+        40
     );
 
-    ctx.textAlign = "center";
+    ctx.font =
+        "15px Arial";
+
+    ctx.fillStyle = "#b7c0c8";
 
     ctx.fillText(
-        game.phase === "playing"
-            ? "AI AMONG US"
-            : game.phase.toUpperCase(),
-        window.innerWidth / 2,
-        33
+        `${completedTasks} / ${tasks.length}`,
+        30,
+        64
     );
 
-    ctx.restore();
-}
+    /*
+        Task prompt.
+    */
 
-function drawMeeting() {
-    if (!game || !game.meeting) {
-        return;
-    }
+    const task =
+        nearestTask();
 
-    const meeting = game.meeting;
+    if (
+        task &&
+        !activeTask
+    ) {
+        const width = 270;
+        const height = 60;
 
-    ctx.save();
+        const x =
+            window.innerWidth / 2 -
+            width / 2;
 
-    ctx.fillStyle = "rgba(0,0,0,0.82)";
+        const y =
+            window.innerHeight -
+            100;
 
-    ctx.fillRect(
-        0,
-        0,
-        window.innerWidth,
-        window.innerHeight
-    );
+        ctx.fillStyle =
+            "rgba(8,10,13,0.92)";
 
-    const width = Math.min(
-        700,
-        window.innerWidth - 40
-    );
-
-    const height = Math.min(
-        560,
-        window.innerHeight - 80
-    );
-
-    const x =
-        (window.innerWidth - width) / 2;
-
-    const y =
-        (window.innerHeight - height) / 2;
-
-    ctx.fillStyle = "#151a20";
-
-    ctx.fillRect(
-        x,
-        y,
-        width,
-        height
-    );
-
-    ctx.strokeStyle = "#69737e";
-
-    ctx.lineWidth = 2;
-
-    ctx.strokeRect(
-        x,
-        y,
-        width,
-        height
-    );
-
-    ctx.fillStyle = "#ffffff";
-
-    ctx.font = "bold 24px Arial";
-
-    ctx.textAlign = "center";
-
-    ctx.fillText(
-        "MEETING",
-        window.innerWidth / 2,
-        y + 38
-    );
-
-    ctx.font = "14px Arial";
-
-    ctx.fillStyle = "#aeb7c0";
-
-    ctx.fillText(
-        meeting.reason,
-        window.innerWidth / 2,
-        y + 65
-    );
-
-    let lineY = y + 105;
-
-    for (const message of meeting.chat || []) {
-        ctx.textAlign = "left";
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.font = "bold 13px Arial";
-
-        ctx.fillText(
-            `${message.name}:`,
-            x + 25,
-            lineY
+        ctx.fillRect(
+            x,
+            y,
+            width,
+            height
         );
 
-        ctx.font = "13px Arial";
-
-        ctx.fillStyle = "#c4cbd2";
-
-        ctx.fillText(
-            message.text,
-            x + 105,
-            lineY
-        );
-
-        lineY += 27;
-
-        if (lineY > y + height - 90) {
-            break;
-        }
-    }
-
-    if (meeting.result) {
         ctx.textAlign = "center";
 
-        ctx.font = "bold 17px Arial";
+        ctx.font =
+            "bold 17px Arial";
 
         ctx.fillStyle = "#ffffff";
 
         ctx.fillText(
-            meeting.result,
+            `[ E ]  ${task.name}`,
             window.innerWidth / 2,
-            y + height - 35
+            y + 25
+        );
+
+        ctx.font =
+            "12px Arial";
+
+        ctx.fillStyle = "#9fa8b1";
+
+        ctx.fillText(
+            task.room,
+            window.innerWidth / 2,
+            y + 45
         );
     }
 
-    ctx.restore();
+    /*
+        Task progress.
+    */
+
+    if (activeTask) {
+        const elapsed =
+            performance.now() -
+            activeTask.started;
+
+        const progress =
+            Math.min(
+                1,
+                elapsed /
+                    activeTask.task.duration
+            );
+
+        const width = 300;
+
+        const x =
+            window.innerWidth / 2 -
+            width / 2;
+
+        const y =
+            window.innerHeight -
+            90;
+
+        ctx.fillStyle =
+            "rgba(8,10,13,0.95)";
+
+        ctx.fillRect(
+            x - 10,
+            y - 10,
+            width + 20,
+            55
+        );
+
+        ctx.fillStyle = "#ffffff";
+
+        ctx.textAlign = "center";
+
+        ctx.font =
+            "bold 14px Arial";
+
+        ctx.fillText(
+            activeTask.task.name,
+            window.innerWidth / 2,
+            y + 8
+        );
+
+        ctx.fillStyle = "#30363d";
+
+        ctx.fillRect(
+            x,
+            y + 18,
+            width,
+            8
+        );
+
+        ctx.fillStyle = "#e4c94c";
+
+        ctx.fillRect(
+            x,
+            y + 18,
+            width * progress,
+            8
+        );
+    }
 }
 
-function drawEndScreen() {
-    if (!game || game.phase !== "ended") {
-        return;
+/* =========================================================
+   GAME LOOP
+   ========================================================= */
+
+function update() {
+    let dx = 0;
+    let dy = 0;
+
+    if (
+        keys["w"] ||
+        keys["arrowup"]
+    ) {
+        dy -= PLAYER_SPEED;
     }
 
-    ctx.save();
+    if (
+        keys["s"] ||
+        keys["arrowdown"]
+    ) {
+        dy += PLAYER_SPEED;
+    }
 
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    if (
+        keys["a"] ||
+        keys["arrowleft"]
+    ) {
+        dx -= PLAYER_SPEED;
+    }
 
-    ctx.fillRect(
-        0,
-        0,
-        window.innerWidth,
-        window.innerHeight
-    );
+    if (
+        keys["d"] ||
+        keys["arrowright"]
+    ) {
+        dx += PLAYER_SPEED;
+    }
 
-    ctx.textAlign = "center";
+    /*
+        Normalize diagonal movement.
+    */
 
-    ctx.font = "bold 48px Arial";
+    if (dx !== 0 && dy !== 0) {
+        const length =
+            Math.hypot(dx, dy);
 
-    ctx.fillStyle = "#ffffff";
+        dx /= length;
+        dy /= length;
 
-    ctx.fillText(
-        game.winner === "crewmates"
-            ? "CREWMATES WIN"
-            : "IMPOSTORS WIN",
-        window.innerWidth / 2,
-        window.innerHeight / 2
-    );
+        dx *= PLAYER_SPEED;
+        dy *= PLAYER_SPEED;
+    }
 
-    ctx.font = "18px Arial";
+    movePlayer(dx, dy);
 
-    ctx.fillStyle = "#b9c1c9";
-
-    ctx.fillText(
-        "Press NEW GAME to play again.",
-        window.innerWidth / 2,
-        window.innerHeight / 2 + 40
-    );
-
-    ctx.restore();
+    updateTask();
+    updateCamera();
 }
 
 function draw() {
+    update();
+
     ctx.clearRect(
         0,
         0,
@@ -1035,224 +1113,50 @@ function draw() {
         window.innerHeight
     );
 
-    ctx.fillStyle = COLORS.background;
-
-    ctx.fillRect(
-        0,
-        0,
-        window.innerWidth,
-        window.innerHeight
-    );
-
-    /*
-        World background.
-    */
-
-    rectWorld(
-        {
-            x: 0,
-            y: 0,
-            w: WORLD_W,
-            h: WORLD_H
-        },
-        "#0a0d11"
-    );
-
-    drawCorridors();
-    drawRooms();
-
-    drawCafeteria();
-    drawStorage();
-    drawElectrical();
-    drawReactor();
-    drawWeapons();
-    drawSecurity();
-    drawAdmin();
-
+    drawMap();
+    drawCafeteriaDetails();
     drawTasks();
-    drawBodies();
-    drawPlayers();
-
-    drawTopUI();
-
-    if (game && game.phase === "meeting") {
-        drawMeeting();
-    }
-
-    drawEndScreen();
+    drawPlayer();
+    drawUI();
 
     requestAnimationFrame(draw);
 }
 
-async function fetchGame() {
-    try {
-        const response =
-            await fetch("/api/game", {
-                cache: "no-store"
-            });
+/* =========================================================
+   RESIZE
+   ========================================================= */
 
-        if (!response.ok) {
-            return;
-        }
+function resize() {
+    const dpr =
+        window.devicePixelRatio || 1;
 
-        game = await response.json();
-    } catch (error) {
-        console.error(
-            "Game update failed:",
-            error
-        );
-    }
+    canvas.width =
+        window.innerWidth * dpr;
+
+    canvas.height =
+        window.innerHeight * dpr;
+
+    canvas.style.width =
+        `${window.innerWidth}px`;
+
+    canvas.style.height =
+        `${window.innerHeight}px`;
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
 }
 
-document
-    .getElementById("newGame")
-    .addEventListener(
-        "click",
-        async () => {
-            try {
-                await fetch(
-                    "/api/game/new",
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        }
-                    }
-                );
-
-                await fetchGame();
-
-                camera.x = WORLD_W / 2;
-                camera.y = WORLD_H / 2;
-                camera.zoom = 4;
-            } catch (error) {
-                console.error(error);
-            }
-        }
-    );
-
-canvas.addEventListener(
-    "mousedown",
-    event => {
-        dragging = true;
-
-        canvas.classList.add("dragging");
-
-        dragStart = {
-            x: event.clientX,
-            y: event.clientY
-        };
-
-        cameraStart = {
-            x: camera.x,
-            y: camera.y
-        };
-    }
-);
-
 window.addEventListener(
-    "mouseup",
-    () => {
-        dragging = false;
-
-        canvas.classList.remove(
-            "dragging"
-        );
-    }
+    "resize",
+    resize
 );
 
-window.addEventListener(
-    "mousemove",
-    event => {
-        if (!dragging) {
-            return;
-        }
-
-        const dx =
-            event.clientX -
-            dragStart.x;
-
-        const dy =
-            event.clientY -
-            dragStart.y;
-
-        camera.x =
-            cameraStart.x -
-            dx / camera.zoom;
-
-        camera.y =
-            cameraStart.y -
-            dy / camera.zoom;
-
-        camera.x = Math.max(
-            0,
-            Math.min(
-                WORLD_W,
-                camera.x
-            )
-        );
-
-        camera.y = Math.max(
-            0,
-            Math.min(
-                WORLD_H,
-                camera.y
-            )
-        );
-    }
-);
-
-canvas.addEventListener(
-    "wheel",
-    event => {
-        event.preventDefault();
-
-        const mouseBefore =
-            screenToWorld(
-                event.clientX,
-                event.clientY
-            );
-
-        const factor =
-            event.deltaY < 0
-                ? 1.12
-                : 0.89;
-
-        camera.zoom *= factor;
-
-        camera.zoom = Math.max(
-            1.5,
-            Math.min(
-                10,
-                camera.zoom
-            )
-        );
-
-        const mouseAfter =
-            screenToWorld(
-                event.clientX,
-                event.clientY
-            );
-
-        camera.x +=
-            mouseBefore.x -
-            mouseAfter.x;
-
-        camera.y +=
-            mouseBefore.y -
-            mouseAfter.y;
-    },
-    {
-        passive: false
-    }
-);
-
-setInterval(
-    fetchGame,
-    500
-);
-
-fetchGame();
+resize();
 
 draw();
