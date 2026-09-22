@@ -1,57 +1,236 @@
 * {
-  box-sizing: border-box;
-  }
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
 
 body {
-margin: 0;
-min-height: 100vh;
-background: #0b0b0f;
-color: #ffffff;
-font-family: Arial, sans-serif;
-display: flex;
-justify-content: center;
-align-items: center;
+    background: #08090c;
+    color: #ffffff;
+    font-family: Arial, sans-serif;
 }
 
 #game {
-width: min(1100px, 95vw);
-min-height: 700px;
-background: #15151c;
-border: 2px solid #30303a;
-border-radius: 12px;
-padding: 20px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
-h1 {
-margin-top: 0;
-text-align: center;
+#topbar {
+    height: 70px;
+    min-height: 70px;
+    padding: 10px 18px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    background: #11131a;
+    border-bottom: 2px solid #292d38;
+}
+
+#topbar h1 {
+    margin: 0;
+    font-size: 24px;
 }
 
 #status {
-text-align: center;
-color: #aaa;
-margin-bottom: 20px;
+    margin-top: 4px;
+    color: #9298a5;
+    font-size: 13px;
 }
 
-#crew {
-display: grid;
-grid-template-columns: repeat(5, 1fr);
-gap: 12px;
+#newGame {
+    padding: 10px 16px;
+
+    border: 1px solid #4b5362;
+    border-radius: 6px;
+
+    background: #20242d;
+    color: white;
+
+    cursor: pointer;
+    font-weight: bold;
 }
 
-.crew-member {
-padding: 15px;
-background: #202029;
-border: 1px solid #353542;
-border-radius: 8px;
+#newGame:hover {
+    background: #2b303b;
 }
 
-.crew-member .name {
-font-weight: bold;
+#spectator {
+    flex: 1;
+    min-height: 0;
+
+    display: flex;
 }
 
-.crew-member .info {
-margin-top: 8px;
-color: #aaa;
-font-size: 14px;
+#mapContainer {
+    position: relative;
+
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+
+    overflow: hidden;
+
+    background:
+        radial-gradient(
+            circle at center,
+            #151820 0%,
+            #090a0e 70%
+        );
+}
+
+#map {
+    position: absolute;
+
+    width: 100%;
+    height: 100%;
+
+    cursor: grab;
+}
+
+#map.dragging {
+    cursor: grabbing;
+}
+
+#cameraHelp {
+    position: absolute;
+
+    left: 15px;
+    bottom: 15px;
+
+    padding: 8px 10px;
+
+    border-radius: 5px;
+
+    background: rgba(10, 11, 15, 0.85);
+    border: 1px solid #303541;
+
+    color: #858b99;
+
+    font-size: 12px;
+
+    pointer-events: none;
+}
+
+#sidebar {
+    width: 310px;
+    min-width: 310px;
+
+    padding: 12px;
+
+    overflow-y: auto;
+
+    background: #101218;
+    border-left: 2px solid #292d38;
+}
+
+.panel {
+    margin-bottom: 12px;
+
+    padding: 12px;
+
+    background: #171a22;
+    border: 1px solid #292e3a;
+    border-radius: 8px;
+}
+
+.panel h2 {
+    margin: 0 0 10px;
+
+    font-size: 15px;
+    color: #dfe3ea;
+}
+
+#gameInfo {
+    color: #999fac;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.crew-card {
+    display: flex;
+    align-items: center;
+
+    gap: 9px;
+
+    padding: 7px 0;
+
+    border-bottom: 1px solid #252934;
+}
+
+.crew-card:last-child {
+    border-bottom: none;
+}
+
+.crew-icon {
+    width: 13px;
+    height: 13px;
+
+    border-radius: 50%;
+
+    flex-shrink: 0;
+}
+
+.crew-name {
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.crew-details {
+    margin-left: auto;
+
+    color: #777e8c;
+
+    font-size: 11px;
+}
+
+.dead {
+    opacity: 0.35;
+    text-decoration: line-through;
+}
+
+#events {
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.event {
+    padding: 6px 0;
+
+    border-bottom: 1px solid #252934;
+
+    color: #999fac;
+    font-size: 12px;
+}
+
+.event:last-child {
+    border-bottom: none;
+}
+
+@media (max-width: 800px) {
+    #spectator {
+        flex-direction: column;
+    }
+
+    #mapContainer {
+        min-height: 55vh;
+    }
+
+    #sidebar {
+        width: 100%;
+        min-width: 0;
+        height: 45vh;
+
+        border-left: none;
+        border-top: 2px solid #292d38;
+    }
 }
