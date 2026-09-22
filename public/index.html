@@ -11,56 +11,11 @@
 
 <body>
 
-    <main id="game">
+    <canvas id="map"></canvas>
 
-        <header id="topbar">
-            <div>
-                <h1>AI Among Us</h1>
-                <div id="status">Connecting...</div>
-            </div>
-
-            <button id="newGame">
-                New Game
-            </button>
-        </header>
-
-        <section id="spectator">
-
-            <div id="mapContainer">
-                <canvas id="map"></canvas>
-
-                <div id="cameraHelp">
-                    Drag to move camera · Scroll to zoom
-                </div>
-            </div>
-
-            <aside id="sidebar">
-
-                <section class="panel">
-                    <h2>Game</h2>
-
-                    <div id="gameInfo">
-                        Loading...
-                    </div>
-                </section>
-
-                <section class="panel">
-                    <h2>AI Crew</h2>
-
-                    <div id="crew"></div>
-                </section>
-
-                <section class="panel">
-                    <h2>Events</h2>
-
-                    <div id="events"></div>
-                </section>
-
-            </aside>
-
-        </section>
-
-    </main>
+    <button id="newGame">
+        NEW GAME
+    </button>
 
     <script src="game.js"></script>
 
