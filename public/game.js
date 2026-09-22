@@ -4,6 +4,7 @@ const ctx = canvas.getContext("2d");
 const newGameButton = document.getElementById("newGame");
 
 let game = null;
+
 let camera = {
     x: 0,
     y: 0,
@@ -11,927 +12,632 @@ let camera = {
 };
 
 let dragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let cameraStartX = 0;
-let cameraStartY = 0;
+let dragStart = { x: 0, y: 0 };
+let cameraStart = { x: 0, y: 0 };
 
-const WORLD_WIDTH = 1200;
-const WORLD_HEIGHT = 800;
+const WORLD_WIDTH = 60;
+const WORLD_HEIGHT = 40;
 
 /*
-    THE SKELD
+    AI AMONG US
+    Frontend renderer for the server simulation.
 
-    Coordinate system is based on the real Skeld layout:
-
-                 UPPER ENGINE     CAFETERIA      WEAPONS
-                       \              |              \
-                        MEDBAY        |              O2
-                         |            |               |
-                      SECURITY        |          NAVIGATION
-                         |            |               \
-                    ELECTRICAL     STORAGE          SHIELDS
-                         |             |
-                    LOWER ENGINE      ADMIN
-                         |             |
-                      REACTOR     COMMUNICATIONS
-
-    The map is intentionally drawn as vector geometry so
-    no copyrighted game texture files are required.
+    World coordinates match server.js.
 */
 
+// ============================================================
+// ROOM DATA
+// ============================================================
+
 const rooms = {
-
-    upperEngine: {
+    UpperEngine: {
         name: "Upper Engine",
-        polygon: [
-            [65, 150],
-            [65, 75],
-            [125, 45],
-            [225, 45],
-            [255, 75],
-            [255, 150],
-            [225, 180],
-            [100, 180]
-        ]
+        x: 2,
+        y: 2,
+        w: 8,
+        h: 8
     },
 
-    reactor: {
+    Reactor: {
         name: "Reactor",
-        polygon: [
-            [65, 285],
-            [65, 215],
-            [100, 185],
-            [225, 185],
-            [255, 215],
-            [255, 330],
-            [225, 360],
-            [100, 360]
-        ]
+        x: 2,
+        y: 12,
+        w: 8,
+        h: 10
     },
 
-    lowerEngine: {
+    LowerEngine: {
         name: "Lower Engine",
-        polygon: [
-            [65, 455],
-            [65, 385],
-            [100, 355],
-            [225, 355],
-            [255, 385],
-            [255, 470],
-            [225, 500],
-            [100, 500]
-        ]
+        x: 2,
+        y: 24,
+        w: 8,
+        h: 8
     },
 
-    medbay: {
+    MedBay: {
         name: "MedBay",
-        polygon: [
-            [275, 105],
-            [275, 55],
-            [350, 55],
-            [395, 95],
-            [395, 165],
-            [350, 190],
-            [285, 190],
-            [255, 165],
-            [255, 125]
-        ]
+        x: 15,
+        y: 7,
+        w: 8,
+        h: 6
     },
 
-    security: {
+    Security: {
         name: "Security",
-        polygon: [
-            [275, 205],
-            [275, 165],
-            [325, 145],
-            [390, 145],
-            [410, 175],
-            [410, 245],
-            [380, 270],
-            [300, 270],
-            [275, 245]
-        ]
+        x: 11,
+        y: 10,
+        w: 6,
+        h: 6
     },
 
-    electrical: {
+    Electrical: {
         name: "Electrical",
-        polygon: [
-            [275, 300],
-            [275, 265],
-            [320, 245],
-            [400, 245],
-            [425, 275],
-            [425, 350],
-            [390, 380],
-            [305, 380],
-            [275, 350]
-        ]
+        x: 13,
+        y: 17,
+        w: 7,
+        h: 6
     },
 
-    cafeteria: {
+    Cafeteria: {
         name: "Cafeteria",
-        polygon: [
-            [430, 70],
-            [475, 30],
-            [650, 30],
-            [700, 70],
-            [700, 230],
-            [650, 275],
-            [475, 275],
-            [425, 230],
-            [425, 115]
-        ]
+        x: 18,
+        y: 14,
+        w: 12,
+        h: 9
     },
 
-    weapons: {
+    Weapons: {
         name: "Weapons",
-        polygon: [
-            [725, 65],
-            [725, 35],
-            [790, 15],
-            [875, 35],
-            [895, 75],
-            [895, 145],
-            [850, 175],
-            [770, 175],
-            [725, 140]
-        ]
+        x: 26,
+        y: 2,
+        w: 9,
+        h: 6
     },
 
-    navigation: {
+    Navigation: {
         name: "Navigation",
-        polygon: [
-            [930, 100],
-            [930, 65],
-            [1010, 40],
-            [1110, 70],
-            [1145, 115],
-            [1145, 205],
-            [1100, 245],
-            [1010, 245],
-            [960, 215],
-            [930, 175]
-        ]
+        x: 30,
+        y: 10,
+        w: 8,
+        h: 8
     },
 
-    o2: {
+    O2: {
         name: "O2",
-        polygon: [
-            [810, 230],
-            [810, 190],
-            [865, 170],
-            [935, 190],
-            [960, 230],
-            [960, 300],
-            [920, 330],
-            [850, 330],
-            [810, 295]
-        ]
+        x: 34,
+        y: 20,
+        w: 7,
+        h: 6
     },
 
-    admin: {
+    Admin: {
         name: "Admin",
-        polygon: [
-            [570, 350],
-            [570, 315],
-            [625, 285],
-            [715, 285],
-            [760, 320],
-            [760, 395],
-            [715, 430],
-            [625, 430],
-            [570, 400]
-        ]
+        x: 24,
+        y: 15,
+        w: 7,
+        h: 7
     },
 
-    storage: {
+    Storage: {
         name: "Storage",
-        polygon: [
-            [430, 350],
-            [430, 300],
-            [475, 275],
-            [565, 275],
-            [600, 310],
-            [600, 470],
-            [565, 505],
-            [475, 505],
-            [430, 470]
-        ]
+        x: 11,
+        y: 23,
+        w: 11,
+        h: 7
     },
 
-    communications: {
+    Communications: {
         name: "Communications",
-        polygon: [
-            [570, 490],
-            [570, 455],
-            [625, 430],
-            [715, 430],
-            [755, 465],
-            [755, 540],
-            [715, 570],
-            [625, 570],
-            [570, 535]
-        ]
+        x: 21,
+        y: 27,
+        w: 7,
+        h: 5
     },
 
-    shields: {
+    Shields: {
         name: "Shields",
-        polygon: [
-            [800, 430],
-            [800, 395],
-            [850, 360],
-            [930, 360],
-            [975, 395],
-            [975, 475],
-            [930, 515],
-            [850, 515],
-            [800, 480]
-        ]
+        x: 32,
+        y: 26,
+        w: 7,
+        h: 6
     }
 };
 
-const corridors = [
-
-    // Upper Engine -> MedBay
-    [
-        [235, 115],
-        [275, 115],
-        [275, 155],
-        [235, 155]
-    ],
-
-    // MedBay -> Cafeteria
-    [
-        [395, 115],
-        [430, 115],
-        [430, 155],
-        [395, 155]
-    ],
-
-    // Security -> Cafeteria
-    [
-        [410, 175],
-        [445, 175],
-        [445, 215],
-        [410, 215]
-    ],
-
-    // Electrical -> Storage
-    [
-        [425, 320],
-        [470, 320],
-        [470, 360],
-        [425, 360]
-    ],
-
-    // Cafeteria -> Storage
-    [
-        [515, 275],
-        [555, 275],
-        [555, 320],
-        [515, 320]
-    ],
-
-    // Cafeteria -> Admin
-    [
-        [650, 275],
-        [650, 315],
-        [690, 315],
-        [690, 275]
-    ],
-
-    // Cafeteria -> Weapons
-    [
-        [700, 110],
-        [725, 110],
-        [725, 145],
-        [700, 145]
-    ],
-
-    // Weapons -> Navigation
-    [
-        [895, 105],
-        [960, 105],
-        [960, 145],
-        [895, 145]
-    ],
-
-    // Navigation -> O2
-    [
-        [925, 170],
-        [960, 170],
-        [960, 235],
-        [925, 235]
-    ],
-
-    // O2 -> Shields
-    [
-        [900, 330],
-        [900, 390],
-        [930, 390],
-        [930, 330]
-    ],
-
-    // Storage -> Admin
-    [
-        [600, 365],
-        [625, 365],
-        [625, 405],
-        [600, 405]
-    ],
-
-    // Storage -> Communications
-    [
-        [530, 470],
-        [570, 470],
-        [570, 505],
-        [530, 505]
-    ],
-
-    // Admin -> Communications
-    [
-        [665, 430],
-        [665, 455],
-        [700, 455],
-        [700, 430]
-    ],
-
-    // Communications -> Shields
-    [
-        [755, 490],
-        [800, 490],
-        [800, 525],
-        [755, 525]
-    ],
-
-    // Upper Engine -> Reactor
-    [
-        [130, 180],
-        [170, 180],
-        [170, 215],
-        [130, 215]
-    ],
-
-    // Reactor -> Lower Engine
-    [
-        [130, 350],
-        [170, 350],
-        [170, 385],
-        [130, 385]
-    ],
-
-    // Electrical -> Lower Engine
-    [
-        [255, 400],
-        [275, 400],
-        [275, 440],
-        [255, 440]
-    ]
-];
-
-const roomCenters = {
-    "Upper Engine": [160, 115],
-    "Reactor": [160, 270],
-    "Lower Engine": [160, 425],
-    "MedBay": [330, 120],
-    "Security": [345, 205],
-    "Electrical": [350, 315],
-    "Cafeteria": [560, 150],
-    "Weapons": [810, 100],
-    "Navigation": [1035, 145],
-    "O2": [880, 250],
-    "Admin": [665, 355],
-    "Storage": [515, 390],
-    "Communications": [665, 500],
-    "Shields": [885, 435]
-};
-
 const roomColors = {
-    "Upper Engine": "#8f5037",
-    "Reactor": "#5b5960",
-    "Lower Engine": "#8f5037",
-    "MedBay": "#587f83",
-    "Security": "#4d5963",
-    "Electrical": "#615852",
-    "Cafeteria": "#b5b6ad",
-    "Weapons": "#5c7e88",
-    "Navigation": "#4e6872",
-    "O2": "#6c817d",
-    "Admin": "#866276",
-    "Storage": "#8d7f56",
-    "Communications": "#486d78",
-    "Shields": "#657b7b"
+    "Upper Engine": "#75402f",
+    "Reactor": "#50565b",
+    "Lower Engine": "#75402f",
+    "MedBay": "#50757a",
+    "Security": "#454d53",
+    "Electrical": "#5a5148",
+    "Cafeteria": "#9b9d98",
+    "Weapons": "#526e78",
+    "Navigation": "#475f68",
+    "O2": "#5c7773",
+    "Admin": "#745569",
+    "Storage": "#776b49",
+    "Communications": "#405f68",
+    "Shields": "#596e6e"
 };
 
-const roomMap = {};
-
-for (const room of Object.values(rooms)) {
-    roomMap[room.name] = room;
-}
+// ============================================================
+// CANVAS
+// ============================================================
 
 function resizeCanvas() {
+
     const dpr = window.devicePixelRatio || 1;
 
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = window.innerHeight * dpr;
+    canvas.width =
+        window.innerWidth * dpr;
 
-    canvas.style.width = window.innerWidth + "px";
-    canvas.style.height = window.innerHeight + "px";
+    canvas.height =
+        window.innerHeight * dpr;
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.style.width =
+        window.innerWidth + "px";
+
+    canvas.style.height =
+        window.innerHeight + "px";
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
 
     fitMap();
 }
 
 function fitMap() {
 
-    const padding = 50;
+    const padding = 45;
 
-    const availableWidth = window.innerWidth - padding * 2;
-    const availableHeight = window.innerHeight - padding * 2;
+    const scaleX =
+        (window.innerWidth - padding * 2) /
+        WORLD_WIDTH;
 
-    const zoomX = availableWidth / WORLD_WIDTH;
-    const zoomY = availableHeight / WORLD_HEIGHT;
+    const scaleY =
+        (window.innerHeight - padding * 2) /
+        WORLD_HEIGHT;
 
-    camera.zoom = Math.min(zoomX, zoomY);
+    camera.zoom =
+        Math.min(scaleX, scaleY);
 
     camera.x =
-        (window.innerWidth - WORLD_WIDTH * camera.zoom) / 2;
+        (window.innerWidth -
+            WORLD_WIDTH * camera.zoom) / 2;
 
     camera.y =
-        (window.innerHeight - WORLD_HEIGHT * camera.zoom) / 2;
+        (window.innerHeight -
+            WORLD_HEIGHT * camera.zoom) / 2;
 }
 
 function worldToScreen(x, y) {
+
     return {
-        x: camera.x + x * camera.zoom,
-        y: camera.y + y * camera.zoom
+        x:
+            camera.x +
+            x * camera.zoom,
+
+        y:
+            camera.y +
+            y * camera.zoom
     };
 }
 
 function screenToWorld(x, y) {
+
     return {
-        x: (x - camera.x) / camera.zoom,
-        y: (y - camera.y) / camera.zoom
+        x:
+            (x - camera.x) /
+            camera.zoom,
+
+        y:
+            (y - camera.y) /
+            camera.zoom
     };
 }
 
-function drawPolygon(points, fill, stroke, lineWidth = 4) {
+// ============================================================
+// COLORS
+// ============================================================
+
+function darken(hex, amount) {
+
+    hex =
+        hex.replace("#", "");
+
+    if (hex.length !== 6) {
+        return "#000000";
+    }
+
+    const r =
+        Math.floor(
+            parseInt(
+                hex.substring(0, 2),
+                16
+            ) * amount
+        );
+
+    const g =
+        Math.floor(
+            parseInt(
+                hex.substring(2, 4),
+                16
+            ) * amount
+        );
+
+    const b =
+        Math.floor(
+            parseInt(
+                hex.substring(4, 6),
+                16
+            ) * amount
+        );
+
+    return `rgb(${r},${g},${b})`;
+}
+
+// ============================================================
+// SHIP
+// ============================================================
+
+function shipOutline() {
+
+    return [
+        [0.5, 9],
+        [1.5, 6],
+        [4, 3],
+        [9, 1],
+        [18, 1],
+        [21, 2],
+        [25, 1],
+        [34, 1],
+        [38, 3],
+        [43, 1],
+        [51, 2],
+        [56, 5],
+        [59, 9],
+        [59, 16],
+        [57, 18],
+        [52, 18],
+        [51, 22],
+        [53, 26],
+        [52, 32],
+        [49, 35],
+        [40, 36],
+        [38, 38],
+        [29, 38],
+        [26, 35],
+        [21, 35],
+        [18, 36],
+        [8, 36],
+        [3, 34],
+        [1, 30]
+    ];
+}
+
+function drawShip() {
+
+    const points =
+        shipOutline();
 
     ctx.beginPath();
 
-    for (let i = 0; i < points.length; i++) {
+    points.forEach(
+        ([x, y], index) => {
 
-        const point = worldToScreen(
-            points[i][0],
-            points[i][1]
-        );
+            const p =
+                worldToScreen(x, y);
 
-        if (i === 0) {
-            ctx.moveTo(point.x, point.y);
-        } else {
-            ctx.lineTo(point.x, point.y);
+            if (index === 0) {
+                ctx.moveTo(p.x, p.y);
+            } else {
+                ctx.lineTo(p.x, p.y);
+            }
         }
-    }
+    );
 
     ctx.closePath();
 
-    ctx.fillStyle = fill;
+    ctx.fillStyle = "#11171b";
     ctx.fill();
 
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = lineWidth * camera.zoom;
+    ctx.strokeStyle = "#30383e";
+    ctx.lineWidth =
+        0.35 * camera.zoom;
+
     ctx.stroke();
 }
 
-function drawMapBackground() {
+// ============================================================
+// ROOMS
+// ============================================================
 
-    ctx.fillStyle = "#05070a";
+function drawRoom(room) {
+
+    const p1 =
+        worldToScreen(
+            room.x,
+            room.y
+        );
+
+    const p2 =
+        worldToScreen(
+            room.x + room.w,
+            room.y + room.h
+        );
+
+    ctx.fillStyle =
+        roomColors[room.name] ||
+        "#555";
+
     ctx.fillRect(
-        0,
-        0,
-        window.innerWidth,
-        window.innerHeight
+        p1.x,
+        p1.y,
+        p2.x - p1.x,
+        p2.y - p1.y
+    );
+
+    ctx.strokeStyle = "#20272c";
+
+    ctx.lineWidth =
+        0.35 * camera.zoom;
+
+    ctx.strokeRect(
+        p1.x,
+        p1.y,
+        p2.x - p1.x,
+        p2.y - p1.y
+    );
+
+    // Inner floor
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.07)";
+
+    ctx.lineWidth =
+        0.08 * camera.zoom;
+
+    ctx.strokeRect(
+        p1.x + 0.5 * camera.zoom,
+        p1.y + 0.5 * camera.zoom,
+        p2.x - p1.x - camera.zoom,
+        p2.y - p1.y - camera.zoom
     );
 }
 
-function drawShipShadow() {
+function drawRooms() {
 
-    const ship = [
-        [40, 120],
-        [80, 70],
-        [150, 35],
-        [350, 35],
-        [420, 55],
-        [475, 25],
-        [650, 25],
-        [710, 55],
-        [790, 10],
-        [900, 30],
-        [970, 55],
-        [1040, 30],
-        [1130, 60],
-        [1170, 110],
-        [1170, 250],
-        [1135, 280],
-        [990, 280],
-        [990, 350],
-        [1010, 400],
-        [1000, 500],
-        [950, 545],
-        [780, 555],
-        [760, 590],
-        [600, 590],
-        [550, 530],
-        [430, 530],
-        [380, 520],
-        [240, 520],
-        [210, 535],
-        [80, 525],
-        [40, 475]
-    ];
-
-    drawPolygon(
-        ship,
-        "#14191d",
-        "#090b0e",
-        20
-    );
+    for (
+        const room of Object.values(rooms)
+    ) {
+        drawRoom(room);
+    }
 }
+
+// ============================================================
+// CORRIDORS
+// ============================================================
+
+const corridors = [
+    [10, 8, 5, 2],
+    [14, 11, 2, 4],
+    [16, 12, 4, 2],
+    [29, 6, 4, 2],
+    [27, 22, 2, 3],
+    [19, 22, 3, 4],
+    [18, 20, 3, 4],
+    [8, 27, 5, 2],
+    [6, 21, 2, 5],
+    [8, 15, 5, 2],
+    [27, 25, 2, 4],
+    [30, 21, 5, 2],
+    [37, 15, 3, 7],
+    [34, 7, 3, 5],
+    [37, 24, 3, 4],
+    [28, 29, 6, 2]
+];
 
 function drawCorridors() {
 
     for (const corridor of corridors) {
 
-        drawPolygon(
-            corridor,
-            "#596066",
-            "#24292e",
-            5
+        const [
+            x,
+            y,
+            w,
+            h
+        ] = corridor;
+
+        const p =
+            worldToScreen(x, y);
+
+        ctx.fillStyle = "#62696d";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            w * camera.zoom,
+            h * camera.zoom
         );
 
-        drawPolygon(
-            corridor.map(([x, y]) => [
-                x + 5,
-                y + 5
-            ]),
-            "#6b7378",
-            "rgba(0,0,0,0)",
-            0
+        ctx.strokeStyle =
+            "#242a2e";
+
+        ctx.lineWidth =
+            0.25 * camera.zoom;
+
+        ctx.strokeRect(
+            p.x,
+            p.y,
+            w * camera.zoom,
+            h * camera.zoom
+        );
+
+        // Corridor center strip
+        ctx.fillStyle =
+            "rgba(255,255,255,0.07)";
+
+        ctx.fillRect(
+            p.x,
+            p.y +
+                h * camera.zoom * 0.42,
+            w * camera.zoom,
+            h * camera.zoom * 0.16
         );
     }
 }
 
-function drawRooms() {
+// ============================================================
+// CAFETERIA
+// ============================================================
 
-    for (const room of Object.values(rooms)) {
+function drawTable(x, y, radius = 1.1) {
 
-        drawPolygon(
-            room.polygon,
-            roomColors[room.name] || "#777",
-            "#20262b",
-            6
-        );
+    const p =
+        worldToScreen(x, y);
 
-        drawRoomDetails(room.name, room.polygon);
-    }
-}
+    const r =
+        radius * camera.zoom;
 
-function drawRoomDetails(name, polygon) {
+    ctx.beginPath();
 
-    const center = getPolygonCenter(polygon);
-    const p = worldToScreen(center.x, center.y);
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    ctx.font =
-        `${Math.max(10, 15 * camera.zoom)}px Arial`;
-
-    ctx.fillStyle = "rgba(255,255,255,0.72)";
-
-    ctx.fillText(
-        name.toUpperCase(),
+    ctx.arc(
         p.x,
-        p.y
+        p.y,
+        r,
+        0,
+        Math.PI * 2
     );
 
-    if (name === "Cafeteria") {
-        drawCafeteria();
-    }
+    ctx.fillStyle = "#4a7382";
+    ctx.fill();
 
-    if (name === "Storage") {
-        drawStorage();
-    }
+    ctx.strokeStyle = "#253f48";
 
-    if (name === "Admin") {
-        drawAdmin();
-    }
+    ctx.lineWidth =
+        0.2 * camera.zoom;
 
-    if (name === "Electrical") {
-        drawElectrical();
-    }
+    ctx.stroke();
 
-    if (name === "Security") {
-        drawSecurity();
-    }
+    ctx.beginPath();
 
-    if (name === "MedBay") {
-        drawMedBay();
-    }
+    ctx.arc(
+        p.x,
+        p.y,
+        r * 0.58,
+        0,
+        Math.PI * 2
+    );
 
-    if (
-        name === "Upper Engine" ||
-        name === "Lower Engine"
-    ) {
-        drawEngine(name);
-    }
+    ctx.fillStyle = "#6e9ba5";
+    ctx.fill();
 
-    if (name === "Reactor") {
-        drawReactor();
-    }
-
-    if (name === "Weapons") {
-        drawWeapons();
-    }
-
-    if (name === "Navigation") {
-        drawNavigation();
-    }
-
-    if (name === "O2") {
-        drawO2();
-    }
-
-    if (name === "Communications") {
-        drawCommunications();
-    }
-
-    if (name === "Shields") {
-        drawShields();
-    }
-}
-
-function getPolygonCenter(points) {
-
-    let x = 0;
-    let y = 0;
-
-    for (const point of points) {
-        x += point[0];
-        y += point[1];
-    }
-
-    return {
-        x: x / points.length,
-        y: y / points.length
-    };
+    ctx.strokeStyle = "#34535c";
+    ctx.stroke();
 }
 
 function drawCafeteria() {
 
-    const tables = [
-        [505, 100],
-        [615, 100],
-        [505, 205],
-        [615, 205]
-    ];
+    // Actual five-table arrangement.
+    drawTable(21.7, 16.8);
+    drawTable(27.2, 16.8);
+    drawTable(21.7, 20.3);
+    drawTable(27.2, 20.3);
 
-    for (const [x, y] of tables) {
-
-        const p = worldToScreen(x, y);
-
-        ctx.beginPath();
-        ctx.arc(
-            p.x,
-            p.y,
-            24 * camera.zoom,
-            0,
-            Math.PI * 2
+    // Emergency table
+    const center =
+        worldToScreen(
+            24.45,
+            18.55
         );
-
-        ctx.fillStyle = "#42728c";
-        ctx.fill();
-
-        ctx.strokeStyle = "#263f4c";
-        ctx.lineWidth = 4 * camera.zoom;
-        ctx.stroke();
-    }
-
-    const center = worldToScreen(560, 153);
 
     ctx.beginPath();
 
     ctx.arc(
         center.x,
         center.y,
-        30 * camera.zoom,
+        1.3 * camera.zoom,
         0,
         Math.PI * 2
     );
 
-    ctx.fillStyle = "#426f82";
+    ctx.fillStyle = "#486e7d";
     ctx.fill();
 
-    ctx.strokeStyle = "#263f4c";
-    ctx.lineWidth = 5 * camera.zoom;
+    ctx.strokeStyle = "#233e47";
+
+    ctx.lineWidth =
+        0.25 * camera.zoom;
+
     ctx.stroke();
 
-    ctx.fillStyle = "#d83232";
+    // Emergency button
+    ctx.beginPath();
 
-    ctx.fillRect(
-        center.x - 9 * camera.zoom,
-        center.y - 7 * camera.zoom,
-        18 * camera.zoom,
-        14 * camera.zoom
-    );
-}
-
-function drawStorage() {
-
-    const crates = [
-        [470, 350],
-        [500, 350],
-        [530, 350],
-        [470, 380],
-        [505, 380]
-    ];
-
-    for (const [x, y] of crates) {
-
-        const p = worldToScreen(x, y);
-
-        ctx.fillStyle = "#6c684d";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            25 * camera.zoom,
-            25 * camera.zoom
-        );
-
-        ctx.strokeStyle = "#3d3a2d";
-        ctx.lineWidth = 2 * camera.zoom;
-        ctx.strokeRect(
-            p.x,
-            p.y,
-            25 * camera.zoom,
-            25 * camera.zoom
-        );
-    }
-}
-
-function drawAdmin() {
-
-    const p = worldToScreen(665, 355);
-
-    ctx.fillStyle = "#30363a";
-
-    ctx.fillRect(
-        p.x - 40 * camera.zoom,
-        p.y - 20 * camera.zoom,
-        80 * camera.zoom,
-        40 * camera.zoom
+    ctx.arc(
+        center.x,
+        center.y - 0.05 * camera.zoom,
+        0.32 * camera.zoom,
+        0,
+        Math.PI * 2
     );
 
-    ctx.strokeStyle = "#15191c";
-    ctx.lineWidth = 3 * camera.zoom;
+    ctx.fillStyle = "#d73535";
+    ctx.fill();
 
-    ctx.strokeRect(
-        p.x - 40 * camera.zoom,
-        p.y - 20 * camera.zoom,
-        80 * camera.zoom,
-        40 * camera.zoom
-    );
+    ctx.strokeStyle = "#8d1f1f";
+    ctx.stroke();
 }
 
-function drawElectrical() {
+// ============================================================
+// ROOM DETAILS
+// ============================================================
 
-    const panels = [
-        [315, 275],
-        [350, 275],
-        [385, 275],
-        [315, 335],
-        [350, 335],
-        [385, 335]
-    ];
+function drawEngine(room) {
 
-    for (const [x, y] of panels) {
+    const x =
+        room === "UpperEngine"
+            ? 6
+            : 6;
 
-        const p = worldToScreen(x, y);
+    const y =
+        room === "UpperEngine"
+            ? 6
+            : 28;
 
-        ctx.fillStyle = "#303437";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            20 * camera.zoom,
-            30 * camera.zoom
-        );
-
-        ctx.fillStyle = "#b5a33e";
-
-        ctx.fillRect(
-            p.x + 5 * camera.zoom,
-            p.y + 6 * camera.zoom,
-            10 * camera.zoom,
-            3 * camera.zoom
-        );
-    }
-}
-
-function drawSecurity() {
-
-    const p = worldToScreen(345, 210);
-
-    ctx.fillStyle = "#242b2f";
-
-    ctx.fillRect(
-        p.x - 30 * camera.zoom,
-        p.y - 20 * camera.zoom,
-        60 * camera.zoom,
-        40 * camera.zoom
-    );
-
-    for (let i = 0; i < 3; i++) {
-
-        ctx.fillStyle = "#15191b";
-
-        ctx.fillRect(
-            p.x - 23 * camera.zoom + i * 17 * camera.zoom,
-            p.y - 12 * camera.zoom,
-            13 * camera.zoom,
-            16 * camera.zoom
-        );
-    }
-}
-
-function drawMedBay() {
-
-    const beds = [
-        [300, 85],
-        [300, 130]
-    ];
-
-    for (const [x, y] of beds) {
-
-        const p = worldToScreen(x, y);
-
-        ctx.fillStyle = "#d7d9d6";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            50 * camera.zoom,
-            15 * camera.zoom
-        );
-
-        ctx.fillStyle = "#7fa4a8";
-
-        ctx.fillRect(
-            p.x,
-            p.y,
-            12 * camera.zoom,
-            15 * camera.zoom
-        );
-    }
-}
-
-function drawEngine(name) {
-
-    const center =
-        name === "Upper Engine"
-            ? [160, 115]
-            : [160, 425];
-
-    const p = worldToScreen(
-        center[0],
-        center[1]
-    );
+    const p =
+        worldToScreen(x, y);
 
     ctx.save();
 
-    ctx.translate(p.x, p.y);
-
-    ctx.rotate(-0.2);
-
-    ctx.fillStyle = "#31383b";
-
-    ctx.fillRect(
-        -25 * camera.zoom,
-        -55 * camera.zoom,
-        50 * camera.zoom,
-        110 * camera.zoom
+    ctx.translate(
+        p.x,
+        p.y
     );
 
-    ctx.fillStyle = "#ba6539";
+    ctx.rotate(-0.15);
+
+    ctx.fillStyle = "#30373b";
 
     ctx.fillRect(
-        -14 * camera.zoom,
-        -38 * camera.zoom,
-        28 * camera.zoom,
-        76 * camera.zoom
+        -1.2 * camera.zoom,
+        -2.5 * camera.zoom,
+        2.4 * camera.zoom,
+        5 * camera.zoom
+    );
+
+    ctx.fillStyle = "#ad5d38";
+
+    ctx.fillRect(
+        -0.65 * camera.zoom,
+        -1.8 * camera.zoom,
+        1.3 * camera.zoom,
+        3.6 * camera.zoom
     );
 
     ctx.restore();
@@ -939,53 +645,46 @@ function drawEngine(name) {
 
 function drawReactor() {
 
-    const p = worldToScreen(160, 270);
+    const p =
+        worldToScreen(
+            6,
+            17
+        );
 
-    ctx.strokeStyle = "#9fa4a5";
-    ctx.lineWidth = 5 * camera.zoom;
+    ctx.strokeStyle = "#aeb4b6";
 
-    ctx.beginPath();
+    ctx.lineWidth =
+        0.25 * camera.zoom;
 
-    ctx.moveTo(
-        p.x - 30 * camera.zoom,
-        p.y - 45 * camera.zoom
-    );
+    for (let i = -1; i <= 1; i++) {
 
-    ctx.lineTo(
-        p.x - 30 * camera.zoom,
-        p.y + 45 * camera.zoom
-    );
+        ctx.beginPath();
 
-    ctx.moveTo(
-        p.x,
-        p.y - 45 * camera.zoom
-    );
+        ctx.moveTo(
+            p.x +
+                i * 1.1 * camera.zoom,
+            p.y -
+                2.5 * camera.zoom
+        );
 
-    ctx.lineTo(
-        p.x,
-        p.y + 45 * camera.zoom
-    );
+        ctx.lineTo(
+            p.x +
+                i * 1.1 * camera.zoom,
+            p.y +
+                2.5 * camera.zoom
+        );
 
-    ctx.moveTo(
-        p.x + 30 * camera.zoom,
-        p.y - 45 * camera.zoom
-    );
+        ctx.stroke();
+    }
 
-    ctx.lineTo(
-        p.x + 30 * camera.zoom,
-        p.y + 45 * camera.zoom
-    );
-
-    ctx.stroke();
-
-    ctx.fillStyle = "#4b8da0";
+    ctx.fillStyle = "#43889a";
 
     ctx.beginPath();
 
     ctx.arc(
         p.x,
         p.y,
-        14 * camera.zoom,
+        0.8 * camera.zoom,
         0,
         Math.PI * 2
     );
@@ -993,90 +692,297 @@ function drawReactor() {
     ctx.fill();
 }
 
-function drawWeapons() {
+function drawMedBay() {
 
-    const p = worldToScreen(810, 100);
+    const beds = [
+        [17, 8.5],
+        [20, 8.5],
+        [17, 11],
+        [20, 11]
+    ];
 
-    ctx.fillStyle = "#252d31";
+    for (
+        const [x, y] of beds
+    ) {
 
-    ctx.beginPath();
+        const p =
+            worldToScreen(x, y);
 
-    ctx.arc(
-        p.x,
-        p.y,
-        28 * camera.zoom,
-        0,
-        Math.PI * 2
+        ctx.fillStyle = "#d2d5d3";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            1.8 * camera.zoom,
+            0.7 * camera.zoom
+        );
+
+        ctx.fillStyle = "#83a6aa";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            0.45 * camera.zoom,
+            0.7 * camera.zoom
+        );
+    }
+}
+
+function drawSecurity() {
+
+    const monitors = [
+        [12.3, 11.2],
+        [14, 11.2],
+        [15.7, 11.2]
+    ];
+
+    for (
+        const [x, y] of monitors
+    ) {
+
+        const p =
+            worldToScreen(x, y);
+
+        ctx.fillStyle = "#151b1e";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            1.2 * camera.zoom,
+            0.9 * camera.zoom
+        );
+
+        ctx.fillStyle = "#648d9a";
+
+        ctx.fillRect(
+            p.x + 0.15 * camera.zoom,
+            p.y + 0.15 * camera.zoom,
+            0.9 * camera.zoom,
+            0.55 * camera.zoom
+        );
+    }
+}
+
+function drawElectrical() {
+
+    const panels = [
+        [14, 18],
+        [16, 18],
+        [18, 18],
+        [14, 20],
+        [16, 20],
+        [18, 20]
+    ];
+
+    for (
+        const [x, y] of panels
+    ) {
+
+        const p =
+            worldToScreen(x, y);
+
+        ctx.fillStyle = "#282e30";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            0.9 * camera.zoom,
+            1.1 * camera.zoom
+        );
+
+        ctx.fillStyle = "#c3a73d";
+
+        ctx.fillRect(
+            p.x + 0.2 * camera.zoom,
+            p.y + 0.2 * camera.zoom,
+            0.5 * camera.zoom,
+            0.08 * camera.zoom
+        );
+    }
+}
+
+function drawStorage() {
+
+    const crates = [
+        [12, 24],
+        [14, 24],
+        [16, 24],
+        [18, 24],
+        [12, 26],
+        [14, 26],
+        [16, 26],
+        [18, 26]
+    ];
+
+    for (
+        const [x, y] of crates
+    ) {
+
+        const p =
+            worldToScreen(x, y);
+
+        ctx.fillStyle = "#625b42";
+
+        ctx.fillRect(
+            p.x,
+            p.y,
+            1.3 * camera.zoom,
+            1.1 * camera.zoom
+        );
+
+        ctx.strokeStyle = "#373326";
+
+        ctx.lineWidth =
+            0.12 * camera.zoom;
+
+        ctx.strokeRect(
+            p.x,
+            p.y,
+            1.3 * camera.zoom,
+            1.1 * camera.zoom
+        );
+    }
+}
+
+function drawAdmin() {
+
+    const p =
+        worldToScreen(
+            27.5,
+            18
+        );
+
+    ctx.fillStyle = "#282f32";
+
+    ctx.fillRect(
+        p.x - 1.5 * camera.zoom,
+        p.y - 0.8 * camera.zoom,
+        3 * camera.zoom,
+        1.6 * camera.zoom
     );
 
-    ctx.fill();
+    ctx.fillStyle = "#6c8d92";
 
-    ctx.strokeStyle = "#83969b";
-    ctx.lineWidth = 5 * camera.zoom;
-
-    ctx.beginPath();
-
-    ctx.arc(
-        p.x,
-        p.y,
-        18 * camera.zoom,
-        0,
-        Math.PI * 2
+    ctx.fillRect(
+        p.x - 1 * camera.zoom,
+        p.y - 0.35 * camera.zoom,
+        2 * camera.zoom,
+        0.7 * camera.zoom
     );
-
-    ctx.stroke();
 }
 
 function drawNavigation() {
 
-    const p = worldToScreen(1035, 145);
+    const p =
+        worldToScreen(
+            34,
+            14
+        );
 
-    ctx.fillStyle = "#29363b";
-
-    ctx.fillRect(
-        p.x - 25 * camera.zoom,
-        p.y - 20 * camera.zoom,
-        50 * camera.zoom,
-        40 * camera.zoom
-    );
-
-    ctx.strokeStyle = "#6c8992";
-    ctx.lineWidth = 3 * camera.zoom;
-
-    ctx.strokeRect(
-        p.x - 25 * camera.zoom,
-        p.y - 20 * camera.zoom,
-        50 * camera.zoom,
-        40 * camera.zoom
-    );
-}
-
-function drawO2() {
-
-    const p = worldToScreen(880, 250);
-
-    ctx.fillStyle = "#334b4b";
+    ctx.fillStyle = "#263237";
 
     ctx.beginPath();
 
     ctx.arc(
         p.x,
         p.y,
-        22 * camera.zoom,
+        1.8 * camera.zoom,
         0,
         Math.PI * 2
     );
 
     ctx.fill();
 
-    ctx.fillStyle = "#83aaa2";
+    ctx.strokeStyle = "#718b92";
+
+    ctx.lineWidth =
+        0.2 * camera.zoom;
+
+    ctx.stroke();
 
     ctx.beginPath();
 
     ctx.arc(
         p.x,
         p.y,
-        10 * camera.zoom,
+        1 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+}
+
+function drawWeapons() {
+
+    const p =
+        worldToScreen(
+            30.5,
+            5
+        );
+
+    ctx.fillStyle = "#252d30";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        1.5 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.strokeStyle = "#80989d";
+
+    ctx.lineWidth =
+        0.25 * camera.zoom;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        0.9 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+}
+
+function drawO2() {
+
+    const p =
+        worldToScreen(
+            37.5,
+            22.5
+        );
+
+    ctx.fillStyle = "#324b4b";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        1.1 * camera.zoom,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.fillStyle = "#7da59e";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        0.45 * camera.zoom,
         0,
         Math.PI * 2
     );
@@ -1086,64 +992,64 @@ function drawO2() {
 
 function drawCommunications() {
 
-    const p = worldToScreen(665, 500);
+    const p =
+        worldToScreen(
+            24.5,
+            29.5
+        );
 
-    ctx.fillStyle = "#28343a";
-
-    ctx.fillRect(
-        p.x - 30 * camera.zoom,
-        p.y - 22 * camera.zoom,
-        60 * camera.zoom,
-        44 * camera.zoom
-    );
-
-    ctx.strokeStyle = "#82959a";
-    ctx.lineWidth = 3 * camera.zoom;
-
-    ctx.strokeRect(
-        p.x - 30 * camera.zoom,
-        p.y - 22 * camera.zoom,
-        60 * camera.zoom,
-        44 * camera.zoom
-    );
-
-    ctx.fillStyle = "#a4a85c";
+    ctx.fillStyle = "#29363b";
 
     ctx.fillRect(
-        p.x - 20 * camera.zoom,
-        p.y - 8 * camera.zoom,
-        40 * camera.zoom,
-        16 * camera.zoom
+        p.x - 1.4 * camera.zoom,
+        p.y - 0.8 * camera.zoom,
+        2.8 * camera.zoom,
+        1.6 * camera.zoom
+    );
+
+    ctx.fillStyle = "#a0a65a";
+
+    ctx.fillRect(
+        p.x - 0.8 * camera.zoom,
+        p.y - 0.25 * camera.zoom,
+        1.6 * camera.zoom,
+        0.5 * camera.zoom
     );
 }
 
 function drawShields() {
 
-    const p = worldToScreen(885, 435);
+    const p =
+        worldToScreen(
+            35.5,
+            29
+        );
 
-    ctx.strokeStyle = "#8c9998";
-    ctx.lineWidth = 6 * camera.zoom;
+    ctx.strokeStyle = "#8b9999";
+
+    ctx.lineWidth =
+        0.3 * camera.zoom;
 
     ctx.beginPath();
 
     ctx.arc(
         p.x,
         p.y,
-        35 * camera.zoom,
+        2 * camera.zoom,
         Math.PI,
         Math.PI * 2
     );
 
     ctx.stroke();
 
-    ctx.fillStyle = "#5f8d94";
+    ctx.fillStyle = "#5f9097";
 
     ctx.beginPath();
 
     ctx.arc(
         p.x,
         p.y,
-        12 * camera.zoom,
+        0.7 * camera.zoom,
         0,
         Math.PI * 2
     );
@@ -1151,181 +1057,165 @@ function drawShields() {
     ctx.fill();
 }
 
-function drawMapBorder() {
+// ============================================================
+// VENTS
+// ============================================================
 
-    const border = [
-        [40, 120],
-        [80, 70],
-        [150, 35],
-        [350, 35],
-        [420, 55],
-        [475, 25],
-        [650, 25],
-        [710, 55],
-        [790, 10],
-        [900, 30],
-        [970, 55],
-        [1040, 30],
-        [1130, 60],
-        [1170, 110],
-        [1170, 250],
-        [1135, 280],
-        [990, 280],
-        [990, 350],
-        [1010, 400],
-        [1000, 500],
-        [950, 545],
-        [780, 555],
-        [760, 590],
-        [600, 590],
-        [550, 530],
-        [430, 530],
-        [380, 520],
-        [240, 520],
-        [210, 535],
-        [80, 525],
-        [40, 475]
-    ];
-
-    drawPolygon(
-        border,
-        "rgba(0,0,0,0)",
-        "#30373c",
-        8
-    );
-}
+const vents = [
+    [7, 5],
+    [7, 28],
+    [16, 19],
+    [14, 13],
+    [27, 18],
+    [31, 5],
+    [34, 14],
+    [38, 23],
+    [35, 29],
+    [24, 29]
+];
 
 function drawVents() {
 
-    const vents = [
-        [665, 315],
-        [855, 125],
-        [1030, 210],
-        [885, 420],
-        [350, 300],
-        [350, 190],
-        [160, 270],
-        [160, 115],
-        [160, 425]
-    ];
+    for (
+        const [x, y] of vents
+    ) {
 
-    for (const [x, y] of vents) {
+        const p =
+            worldToScreen(x, y);
 
-        const p = worldToScreen(x, y);
-
-        ctx.save();
-
-        ctx.translate(p.x, p.y);
-
-        ctx.fillStyle = "#171b1e";
+        ctx.fillStyle = "#171c1f";
 
         ctx.beginPath();
 
         ctx.roundRect(
-            -10 * camera.zoom,
-            -6 * camera.zoom,
-            20 * camera.zoom,
-            12 * camera.zoom,
-            3 * camera.zoom
+            p.x - 0.55 * camera.zoom,
+            p.y - 0.3 * camera.zoom,
+            1.1 * camera.zoom,
+            0.6 * camera.zoom,
+            0.12 * camera.zoom
         );
 
         ctx.fill();
 
         ctx.strokeStyle = "#080a0c";
-        ctx.lineWidth = 2 * camera.zoom;
-        ctx.stroke();
 
-        ctx.restore();
-    }
-}
+        ctx.lineWidth =
+            0.1 * camera.zoom;
 
-function drawGrid() {
-
-    const gridSize = 25;
-
-    ctx.strokeStyle = "rgba(255,255,255,0.035)";
-    ctx.lineWidth = 1;
-
-    for (let x = 0; x < WORLD_WIDTH; x += gridSize) {
-
-        const a = worldToScreen(x, 0);
-        const b = worldToScreen(x, WORLD_HEIGHT);
-
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-    }
-
-    for (let y = 0; y < WORLD_HEIGHT; y += gridSize) {
-
-        const a = worldToScreen(0, y);
-        const b = worldToScreen(WORLD_WIDTH, y);
-
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
         ctx.stroke();
     }
 }
 
-function drawPlayer(player) {
+// ============================================================
+// TASKS
+// ============================================================
 
-    if (!player || !player.alive) {
+function drawTasks() {
+
+    if (!game || !game.players) {
         return;
     }
 
-    const p = worldToScreen(
-        player.x,
-        player.y
-    );
+    const tasks = [];
 
-    const size = 16 * camera.zoom;
+    for (
+        const player of game.players
+    ) {
+
+        for (
+            const task of
+            player.tasks || []
+        ) {
+
+            if (!task.completed) {
+                tasks.push(task);
+            }
+        }
+    }
+
+    const unique = new Map();
+
+    for (const task of tasks) {
+        unique.set(
+            task.id,
+            task
+        );
+    }
+
+    for (
+        const task of unique.values()
+    ) {
+
+        const p =
+            worldToScreen(
+                task.x,
+                task.y
+            );
+
+        ctx.fillStyle = "#d6b63c";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            0.35 * camera.zoom,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+        ctx.strokeStyle =
+            "rgba(0,0,0,0.5)";
+
+        ctx.lineWidth =
+            0.08 * camera.zoom;
+
+        ctx.stroke();
+    }
+}
+
+// ============================================================
+// PLAYERS
+// ============================================================
+
+function drawPlayer(player) {
+
+    if (!player.alive) {
+        return;
+    }
+
+    const p =
+        worldToScreen(
+            player.x,
+            player.y
+        );
+
+    const s =
+        Math.max(
+            10,
+            0.85 * camera.zoom
+        );
 
     ctx.save();
 
-    ctx.translate(p.x, p.y);
-
-    // Backpack
-    ctx.fillStyle = darken(player.color, 0.65);
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -size * 0.72,
-        -size * 0.05,
-        size * 0.35,
-        size * 0.9,
-        size * 0.12
+    ctx.translate(
+        p.x,
+        p.y
     );
 
-    ctx.fill();
-
-    // Body
-    ctx.fillStyle = player.color;
-
-    ctx.beginPath();
-
-    ctx.roundRect(
-        -size * 0.48,
-        -size,
-        size * 0.95,
-        size * 1.65,
-        size * 0.38
-    );
-
-    ctx.fill();
-
-    // Visor
-    ctx.fillStyle = "#bce8ef";
+    // Shadow
+    ctx.fillStyle =
+        "rgba(0,0,0,0.35)";
 
     ctx.beginPath();
 
     ctx.ellipse(
-        size * 0.08,
-        -size * 0.48,
-        size * 0.38,
-        size * 0.24,
+        0,
+        s * 0.8,
+        s * 0.75,
+        s * 0.3,
         0,
         0,
         Math.PI * 2
@@ -1333,15 +1223,68 @@ function drawPlayer(player) {
 
     ctx.fill();
 
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    // Backpack
+    ctx.fillStyle =
+        darken(
+            player.color,
+            0.62
+        );
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        -s * 0.9,
+        -s * 0.05,
+        s * 0.35,
+        s * 1.05,
+        s * 0.12
+    );
+
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle =
+        player.color;
+
+    ctx.beginPath();
+
+    ctx.roundRect(
+        -s * 0.48,
+        -s,
+        s * 0.96,
+        s * 1.7,
+        s * 0.35
+    );
+
+    ctx.fill();
+
+    // Visor
+    ctx.fillStyle = "#bce7ed";
 
     ctx.beginPath();
 
     ctx.ellipse(
-        size * 0.17,
-        -size * 0.56,
-        size * 0.12,
-        size * 0.07,
+        s * 0.08,
+        -s * 0.47,
+        s * 0.39,
+        s * 0.25,
+        0,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.fillStyle =
+        "rgba(255,255,255,0.42)";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        s * 0.19,
+        -s * 0.56,
+        s * 0.13,
+        s * 0.08,
         0,
         0,
         Math.PI * 2
@@ -1352,39 +1295,38 @@ function drawPlayer(player) {
     ctx.restore();
 
     // Name
-    ctx.font =
-        `${Math.max(9, 12 * camera.zoom)}px Arial`;
-
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
 
+    ctx.font =
+        `bold ${Math.max(
+            9,
+            0.62 * camera.zoom
+        )}px Arial`;
+
     ctx.fillStyle = "#ffffff";
+
+    ctx.strokeStyle =
+        "rgba(0,0,0,0.85)";
+
+    ctx.lineWidth = 3;
+
+    ctx.strokeText(
+        player.name,
+        p.x,
+        p.y - 1.25 * camera.zoom
+    );
 
     ctx.fillText(
         player.name,
         p.x,
-        p.y - 20 * camera.zoom
+        p.y - 1.25 * camera.zoom
     );
 }
 
-function darken(color, amount) {
-
-    const hex = color.replace("#", "");
-
-    if (hex.length !== 6) {
-        return color;
-    }
-
-    let r = parseInt(hex.substring(0, 2), 16);
-    let g = parseInt(hex.substring(2, 4), 16);
-    let b = parseInt(hex.substring(4, 6), 16);
-
-    r = Math.floor(r * amount);
-    g = Math.floor(g * amount);
-    b = Math.floor(b * amount);
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
+// ============================================================
+// BODIES
+// ============================================================
 
 function drawBodies() {
 
@@ -1392,28 +1334,41 @@ function drawBodies() {
         return;
     }
 
-    for (const body of game.bodies) {
+    for (
+        const body of game.bodies
+    ) {
 
-        const p = worldToScreen(
-            body.x,
-            body.y
-        );
+        const p =
+            worldToScreen(
+                body.x,
+                body.y
+            );
+
+        const s =
+            Math.max(
+                8,
+                0.9 * camera.zoom
+            );
 
         ctx.save();
 
-        ctx.translate(p.x, p.y);
+        ctx.translate(
+            p.x,
+            p.y
+        );
 
-        ctx.rotate(-0.35);
+        ctx.rotate(-0.3);
 
-        ctx.fillStyle = "#d83b3b";
+        // Lower body
+        ctx.fillStyle = "#d83232";
 
         ctx.beginPath();
 
         ctx.ellipse(
             0,
             0,
-            13 * camera.zoom,
-            8 * camera.zoom,
+            s * 0.8,
+            s * 0.45,
             0,
             0,
             Math.PI * 2
@@ -1421,107 +1376,592 @@ function drawBodies() {
 
         ctx.fill();
 
-        ctx.fillStyle = "#ffffff";
+        // Bone
+        ctx.strokeStyle = "#eeeeee";
 
-        ctx.font =
-            `${Math.max(9, 10 * camera.zoom)}px Arial`;
+        ctx.lineWidth =
+            s * 0.25;
 
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
+        ctx.beginPath();
 
-        ctx.fillText(
-            "X",
-            0,
-            0
+        ctx.moveTo(
+            -s * 0.25,
+            -s * 0.05
         );
+
+        ctx.lineTo(
+            s * 0.55,
+            -s * 0.55
+        );
+
+        ctx.stroke();
 
         ctx.restore();
     }
 }
 
-function drawTopBar() {
+// ============================================================
+// CHAT
+// ============================================================
 
-    if (!game) {
+function drawChat() {
+
+    if (
+        !game ||
+        !game.chat ||
+        game.chat.length === 0
+    ) {
         return;
     }
 
-    ctx.fillStyle = "rgba(7, 9, 12, 0.88)";
+    const width = 320;
+
+    const lineHeight = 20;
+
+    const visible =
+        game.chat.slice(-9);
+
+    const height =
+        visible.length *
+            lineHeight +
+        22;
+
+    const x = 15;
+
+    const y =
+        window.innerHeight -
+        height -
+        15;
+
+    ctx.fillStyle =
+        "rgba(5,7,10,0.88)";
+
+    ctx.fillRect(
+        x,
+        y,
+        width,
+        height
+    );
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.15)";
+
+    ctx.strokeRect(
+        x,
+        y,
+        width,
+        height
+    );
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+
+    visible.forEach(
+        (message, index) => {
+
+            const yy =
+                y +
+                13 +
+                index * lineHeight;
+
+            ctx.font =
+                "bold 12px Arial";
+
+            ctx.fillStyle =
+                message.color ||
+                "#ffffff";
+
+            ctx.fillText(
+                message.name + ":",
+                x + 8,
+                yy
+            );
+
+            ctx.font =
+                "12px Arial";
+
+            ctx.fillStyle = "#ffffff";
+
+            ctx.fillText(
+                message.text,
+                x + 72,
+                yy
+            );
+        }
+    );
+}
+
+// ============================================================
+// TOP BAR
+// ============================================================
+
+function drawTopBar() {
+
+    ctx.fillStyle =
+        "rgba(5,7,10,0.9)";
 
     ctx.fillRect(
         0,
         0,
         window.innerWidth,
-        52
+        48
     );
-
-    ctx.fillStyle = "#ffffff";
-
-    ctx.font = "bold 17px Arial";
 
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
 
+    ctx.font =
+        "bold 17px Arial";
+
+    ctx.fillStyle = "#ffffff";
+
     ctx.fillText(
         "AI AMONG US",
-        20,
-        26
+        18,
+        24
     );
 
-    ctx.font = "13px Arial";
+    if (!game) {
+        return;
+    }
 
-    ctx.fillStyle = "#aeb5ba";
+    ctx.font =
+        "12px Arial";
+
+    ctx.fillStyle = "#aab1b6";
 
     ctx.fillText(
-        `Round ${game.round || 1}`,
-        160,
-        26
+        `ROUND ${game.round}`,
+        155,
+        24
+    );
+
+    ctx.fillText(
+        game.phase.toUpperCase(),
+        240,
+        24
     );
 }
 
+// ============================================================
+// MEETING SCREEN
+// ============================================================
+
+function drawMeetingOverlay() {
+
+    if (
+        !game ||
+        (
+            game.phase !== "discussion" &&
+            game.phase !== "voting"
+        )
+    ) {
+        return;
+    }
+
+    ctx.fillStyle =
+        "rgba(0,0,0,0.72)";
+
+    ctx.fillRect(
+        0,
+        0,
+        window.innerWidth,
+        window.innerHeight
+    );
+
+    const width =
+        Math.min(
+            760,
+            window.innerWidth - 40
+        );
+
+    const height =
+        Math.min(
+            620,
+            window.innerHeight - 80
+        );
+
+    const x =
+        (window.innerWidth -
+            width) / 2;
+
+    const y =
+        (window.innerHeight -
+            height) / 2;
+
+    ctx.fillStyle = "#151a1e";
+
+    ctx.fillRect(
+        x,
+        y,
+        width,
+        height
+    );
+
+    ctx.strokeStyle = "#56616a";
+
+    ctx.lineWidth = 2;
+
+    ctx.strokeRect(
+        x,
+        y,
+        width,
+        height
+    );
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.font =
+        "bold 28px Arial";
+
+    ctx.fillStyle = "#ffffff";
+
+    if (game.phase === "discussion") {
+
+        ctx.fillText(
+            game.lastMeeting?.type ===
+                "emergency"
+                ? "EMERGENCY MEETING"
+                : "BODY REPORTED",
+            x + width / 2,
+            y + 35
+        );
+
+    } else {
+
+        ctx.fillText(
+            "VOTING",
+            x + width / 2,
+            y + 35
+        );
+    }
+
+    ctx.font =
+        "bold 18px Arial";
+
+    ctx.fillStyle = "#d8dce0";
+
+    ctx.fillText(
+        `${Math.ceil(
+            game.meetingTimer
+        )}s`,
+        x + width / 2,
+        y + 72
+    );
+
+    drawMeetingChat(
+        x,
+        y,
+        width,
+        height
+    );
+
+    if (game.phase === "voting") {
+
+        drawVoteList(
+            x,
+            y,
+            width,
+            height
+        );
+    }
+}
+
+function drawMeetingChat(
+    x,
+    y,
+    width,
+    height
+) {
+
+    const chat =
+        game.chat.slice(-8);
+
+    ctx.textAlign = "left";
+
+    chat.forEach(
+        (message, index) => {
+
+            const yy =
+                y +
+                115 +
+                index * 30;
+
+            ctx.font =
+                "bold 13px Arial";
+
+            ctx.fillStyle =
+                message.color ||
+                "#ffffff";
+
+            ctx.fillText(
+                message.name,
+                x + 25,
+                yy
+            );
+
+            ctx.font =
+                "13px Arial";
+
+            ctx.fillStyle = "#ffffff";
+
+            ctx.fillText(
+                message.text,
+                x + 120,
+                yy
+            );
+        }
+    );
+}
+
+function drawVoteList(
+    x,
+    y,
+    width,
+    height
+) {
+
+    if (!game.players) {
+        return;
+    }
+
+    const startX =
+        x + width - 250;
+
+    const startY =
+        y + 110;
+
+    const alive =
+        game.players.filter(
+            p => p.alive
+        );
+
+    ctx.textAlign = "left";
+
+    ctx.font =
+        "bold 13px Arial";
+
+    alive.forEach(
+        (player, index) => {
+
+            const yy =
+                startY +
+                index * 38;
+
+            ctx.fillStyle =
+                player.color;
+
+            ctx.fillText(
+                player.name,
+                startX,
+                yy
+            );
+
+            ctx.fillStyle =
+                "#9da5aa";
+
+            let voteCount = 0;
+
+            if (game.votes) {
+
+                for (
+                    const vote
+                    of Object.values(
+                        game.votes
+                    )
+                ) {
+
+                    if (
+                        vote ===
+                        player.id
+                    ) {
+                        voteCount++;
+                    }
+                }
+            }
+
+            ctx.fillText(
+                voteCount > 0
+                    ? `${voteCount} vote${voteCount === 1 ? "" : "s"}`
+                    : "",
+                startX + 110,
+                yy
+            );
+        }
+    );
+}
+
+// ============================================================
+// GAME END
+// ============================================================
+
+function drawGameEnd() {
+
+    if (
+        !game ||
+        game.phase !== "ended"
+    ) {
+        return;
+    }
+
+    ctx.fillStyle =
+        "rgba(0,0,0,0.78)";
+
+    ctx.fillRect(
+        0,
+        0,
+        window.innerWidth,
+        window.innerHeight
+    );
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const winnerText =
+        game.winner === "impostors"
+            ? "IMPOSTORS WIN"
+            : "CREWMATES WIN";
+
+    const winnerColor =
+        game.winner === "impostors"
+            ? "#d83b3b"
+            : "#54b96b";
+
+    ctx.font =
+        "900 54px Arial";
+
+    ctx.fillStyle =
+        winnerColor;
+
+    ctx.fillText(
+        winnerText,
+        window.innerWidth / 2,
+        window.innerHeight / 2 - 55
+    );
+
+    ctx.font =
+        "18px Arial";
+
+    ctx.fillStyle = "#ffffff";
+
+    ctx.fillText(
+        game.winReason || "",
+        window.innerWidth / 2,
+        window.innerHeight / 2 + 5
+    );
+
+    ctx.font =
+        "14px Arial";
+
+    ctx.fillStyle = "#9da5aa";
+
+    ctx.fillText(
+        "Press NEW GAME to play again",
+        window.innerWidth / 2,
+        window.innerHeight / 2 + 45
+    );
+}
+
+// ============================================================
+// MAIN RENDER
+// ============================================================
+
 function draw() {
 
-    drawMapBackground();
+    ctx.clearRect(
+        0,
+        0,
+        window.innerWidth,
+        window.innerHeight
+    );
 
-    drawShipShadow();
+    // Background
+    ctx.fillStyle = "#06080a";
 
-    drawGrid();
+    ctx.fillRect(
+        0,
+        0,
+        window.innerWidth,
+        window.innerHeight
+    );
+
+    drawShip();
 
     drawCorridors();
 
     drawRooms();
 
-    drawMapBorder();
+    drawCafeteria();
+
+    drawEngine("UpperEngine");
+    drawEngine("LowerEngine");
+
+    drawReactor();
+    drawMedBay();
+    drawSecurity();
+    drawElectrical();
+    drawStorage();
+    drawAdmin();
+    drawNavigation();
+    drawWeapons();
+    drawO2();
+    drawCommunications();
+    drawShields();
 
     drawVents();
 
+    drawTasks();
+
     drawBodies();
 
-    if (game && game.players) {
+    if (
+        game &&
+        game.players
+    ) {
 
-        for (const player of game.players) {
+        for (
+            const player of game.players
+        ) {
             drawPlayer(player);
         }
     }
 
     drawTopBar();
 
+    drawChat();
+
+    drawMeetingOverlay();
+
+    drawGameEnd();
+
     requestAnimationFrame(draw);
 }
+
+// ============================================================
+// SERVER
+// ============================================================
 
 async function loadGame() {
 
     try {
 
         const response =
-            await fetch("/api/game", {
-                cache: "no-store"
-            });
+            await fetch(
+                "/api/game",
+                {
+                    cache: "no-store"
+                }
+            );
 
         if (!response.ok) {
-            throw new Error("Failed to load game");
+            throw new Error(
+                "Game request failed"
+            );
         }
 
-        game = await response.json();
+        game =
+            await response.json();
 
     } catch (error) {
 
@@ -1532,25 +1972,34 @@ async function loadGame() {
     }
 }
 
-async function createNewGame() {
+async function newGame() {
 
     newGameButton.disabled = true;
 
     try {
 
         const response =
-            await fetch("/api/game/new", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
+            await fetch(
+                "/api/game/new",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    }
                 }
-            });
+            );
 
         if (!response.ok) {
-            throw new Error("Failed to create game");
+            throw new Error(
+                "New game failed"
+            );
         }
 
-        game = await response.json();
+        game =
+            await response.json();
+
+        fitMap();
 
     } catch (error) {
 
@@ -1567,8 +2016,12 @@ async function createNewGame() {
 
 newGameButton.addEventListener(
     "click",
-    createNewGame
+    newGame
 );
+
+// ============================================================
+// CAMERA
+// ============================================================
 
 canvas.addEventListener(
     "mousedown",
@@ -1576,13 +2029,21 @@ canvas.addEventListener(
 
         dragging = true;
 
-        canvas.classList.add("dragging");
+        dragStart.x =
+            event.clientX;
 
-        dragStartX = event.clientX;
-        dragStartY = event.clientY;
+        dragStart.y =
+            event.clientY;
 
-        cameraStartX = camera.x;
-        cameraStartY = camera.y;
+        cameraStart.x =
+            camera.x;
+
+        cameraStart.y =
+            camera.y;
+
+        canvas.classList.add(
+            "dragging"
+        );
     }
 );
 
@@ -1592,7 +2053,9 @@ window.addEventListener(
 
         dragging = false;
 
-        canvas.classList.remove("dragging");
+        canvas.classList.remove(
+            "dragging"
+        );
     }
 );
 
@@ -1605,12 +2068,18 @@ window.addEventListener(
         }
 
         camera.x =
-            cameraStartX +
-            (event.clientX - dragStartX);
+            cameraStart.x +
+            (
+                event.clientX -
+                dragStart.x
+            );
 
         camera.y =
-            cameraStartY +
-            (event.clientY - dragStartY);
+            cameraStart.y +
+            (
+                event.clientY -
+                dragStart.y
+            );
     }
 );
 
@@ -1620,51 +2089,63 @@ canvas.addEventListener(
 
         event.preventDefault();
 
-        const mouseX = event.clientX;
-        const mouseY = event.clientY;
+        const mouse =
+            screenToWorld(
+                event.clientX,
+                event.clientY
+            );
 
-        const before =
-            screenToWorld(mouseX, mouseY);
-
-        const zoomFactor =
+        const factor =
             event.deltaY < 0
                 ? 1.1
                 : 0.9;
 
-        camera.zoom *= zoomFactor;
+        camera.zoom *= factor;
 
         camera.zoom =
             Math.max(
-                0.35,
-                Math.min(3.5, camera.zoom)
+                8,
+                Math.min(
+                    45,
+                    camera.zoom
+                )
             );
 
         const after =
-            screenToWorld(mouseX, mouseY);
+            worldToScreen(
+                mouse.x,
+                mouse.y
+            );
 
         camera.x +=
-            (after.x - before.x) *
-            camera.zoom;
+            event.clientX -
+            after.x;
 
         camera.y +=
-            (after.y - before.y) *
-            camera.zoom;
+            event.clientY -
+            after.y;
     },
-    { passive: false }
+    {
+        passive: false
+    }
 );
+
+// ============================================================
+// START
+// ============================================================
 
 window.addEventListener(
     "resize",
     resizeCanvas
 );
 
-setInterval(
-    loadGame,
-    500
-);
-
 resizeCanvas();
 
 loadGame();
+
+setInterval(
+    loadGame,
+    250
+);
 
 requestAnimationFrame(draw);
