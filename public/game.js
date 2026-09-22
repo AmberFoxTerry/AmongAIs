@@ -4,1159 +4,1215 @@ const ctx = canvas.getContext("2d");
 const WORLD_W = 220;
 const WORLD_H = 150;
 
+const PLAYER_RADIUS = 1.7;
 const PLAYER_SPEED = 0.18;
+
+let cameraX = 110;
+let cameraY = 75;
+const ZOOM = 5;
 
 const keys = {};
 
-let player = {
+window.addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+
+    if (
+        ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(
+            e.key.toLowerCase()
+        )
+    ) {
+        e.preventDefault();
+    }
+});
+
+window.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+
+// ============================================================
+// PLAYER
+// ============================================================
+
+const player = {
     x: 110,
     y: 75,
-    radius: 1.2
+    color: "#d94b4b",
+    facing: 0
 };
 
-let camera = {
-    x: player.x,
-    y: player.y,
-    zoom: 5
-};
 
-let tasks = [];
-let completedTasks = 0;
-let activeTask = null;
+// ============================================================
+// MAP
+// ============================================================
+
+const rooms = [
+    {
+        name: "CAFETERIA",
+        x: 78,
+        y: 56,
+        w: 64,
+        h: 38
+    },
+
+    {
+        name: "UPPER ENGINE",
+        x: 15,
+        y: 10,
+        w: 42,
+        h: 30
+    },
+
+    {
+        name: "MEDBAY",
+        x: 60,
+        y: 10,
+        w: 30,
+        h: 30
+    },
+
+    {
+        name: "WEAPONS",
+        x: 150,
+        y: 10,
+        w: 38,
+        h: 30
+    },
+
+    {
+        name: "REACTOR",
+        x: 8,
+        y: 60,
+        w: 35,
+        h: 32
+    },
+
+    {
+        name: "ELECTRICAL",
+        x: 45,
+        y: 60,
+        w: 28,
+        h: 30
+    },
+
+    {
+        name: "ADMIN",
+        x: 145,
+        y: 60,
+        w: 32,
+        h: 30
+    },
+
+    {
+        name: "NAVIGATION",
+        x: 192,
+        y: 52,
+        w: 24,
+        h: 38
+    },
+
+    {
+        name: "LOWER ENGINE",
+        x: 15,
+        y: 108,
+        w: 42,
+        h: 30
+    },
+
+    {
+        name: "SECURITY",
+        x: 60,
+        y: 108,
+        w: 30,
+        h: 30
+    },
+
+    {
+        name: "STORAGE",
+        x: 94,
+        y: 105,
+        w: 44,
+        h: 33
+    },
+
+    {
+        name: "O2",
+        x: 145,
+        y: 105,
+        w: 30,
+        h: 33
+    },
+
+    {
+        name: "COMMUNICATIONS",
+        x: 184,
+        y: 105,
+        w: 32,
+        h: 33
+    }
+];
+
+
+// ============================================================
+// CORRIDORS
+// ============================================================
+
+const corridors = [
+    // Main horizontal corridor
+    { x: 43, y: 67, w: 35, h: 14 },
+    { x: 142, y: 67, w: 50, h: 14 },
+
+    // Left vertical corridor
+    { x: 30, y: 40, w: 14, h: 68 },
+
+    // Center vertical corridor
+    { x: 84, y: 40, w: 14, h: 68 },
+
+    // Right vertical corridor
+    { x: 177, y: 40, w: 14, h: 70 },
+
+    // Bottom horizontal corridor
+    { x: 43, y: 117, w: 51, h: 14 },
+    { x: 138, y: 117, w: 46, h: 14 },
+
+    // Top horizontal corridor
+    { x: 43, y: 24, w: 107, h: 12 }
+];
+
+
+// ============================================================
+// COLLISION WALLS
+// ============================================================
 
 const walls = [];
-const rooms = [];
 
-/* =========================================================
-   MAP
-   ========================================================= */
-
-function addRoom(name, x, y, w, h) {
-    rooms.push({
-        name,
-        x,
-        y,
-        w,
-        h
-    });
+function wall(x, y, w, h) {
+    walls.push({ x, y, w, h });
 }
 
-function addWall(x, y, w, h) {
-    walls.push({
-        x,
-        y,
-        w,
-        h
-    });
-}
 
-/*
-    Main layout.
+// ------------------------------------------------------------
+// OUTER BOUNDARY
+// ------------------------------------------------------------
 
-    Large central hub with six wings.
-*/
+wall(0, 0, WORLD_W, 4);
+wall(0, WORLD_H - 4, WORLD_W, 4);
+wall(0, 0, 4, WORLD_H);
+wall(WORLD_W - 4, 0, 4, WORLD_H);
 
-addRoom("Cafeteria", 82, 57, 56, 36);
 
-addRoom("Upper Engine", 18, 12, 38, 28);
-addRoom("Lower Engine", 18, 110, 38, 28);
+// ------------------------------------------------------------
+// UPPER ENGINE
+// door on bottom
+// ------------------------------------------------------------
 
-addRoom("Reactor", 8, 60, 38, 32);
+wall(15, 10, 42, 2);
+wall(15, 10, 2, 30);
+wall(55, 10, 2, 30);
 
-addRoom("MedBay", 52, 12, 28, 30);
-addRoom("Security", 52, 108, 28, 30);
+wall(15, 38, 13, 2);
+wall(44, 38, 13, 2);
 
-addRoom("Weapons", 150, 12, 36, 30);
-addRoom("Navigation", 190, 52, 25, 34);
 
-addRoom("Admin", 142, 57, 32, 28);
-addRoom("O2", 145, 105, 30, 30);
+// ------------------------------------------------------------
+// MEDBAY
+// door on bottom
+// ------------------------------------------------------------
 
-addRoom("Storage", 82, 105, 56, 35);
+wall(60, 10, 30, 2);
+wall(60, 10, 2, 30);
+wall(88, 10, 2, 30);
 
-addRoom("Electrical", 45, 57, 30, 30);
-addRoom("Communications", 185, 105, 30, 30);
+wall(60, 38, 10, 2);
+wall(80, 38, 10, 2);
 
-/*
-    Corridor walls / boundaries.
 
-    The map is intentionally open in the middle,
-    but rooms are separated by solid walls.
-*/
+// ------------------------------------------------------------
+// WEAPONS
+// door on bottom
+// ------------------------------------------------------------
 
-/* Upper Engine */
-addWall(18, 10, 38, 2);
-addWall(18, 40, 38, 2);
-addWall(16, 12, 2, 28);
-addWall(56, 12, 2, 28);
+wall(150, 10, 38, 2);
+wall(150, 10, 2, 30);
+wall(186, 10, 2, 30);
 
-/* Lower Engine */
-addWall(18, 108, 38, 2);
-addWall(18, 138, 38, 2);
-addWall(16, 110, 2, 28);
-addWall(56, 110, 2, 28);
+wall(150, 38, 14, 2);
+wall(176, 38, 12, 2);
 
-/* Reactor */
-addWall(8, 58, 38, 2);
-addWall(8, 92, 38, 2);
-addWall(6, 60, 2, 32);
-addWall(46, 60, 2, 32);
 
-/* MedBay */
-addWall(52, 10, 28, 2);
-addWall(52, 42, 28, 2);
-addWall(50, 12, 2, 30);
-addWall(80, 12, 2, 30);
+// ------------------------------------------------------------
+// CAFETERIA
+// multiple doors
+// ------------------------------------------------------------
 
-/* Security */
-addWall(52, 106, 28, 2);
-addWall(52, 138, 28, 2);
-addWall(50, 108, 2, 30);
-addWall(80, 108, 2, 30);
+// Top wall
+wall(78, 56, 25, 2);
+wall(117, 56, 25, 2);
 
-/* Cafeteria */
-addWall(82, 55, 56, 2);
-addWall(82, 93, 56, 2);
-addWall(80, 57, 2, 36);
-addWall(138, 57, 2, 36);
+// Left wall
+wall(78, 56, 2, 12);
+wall(78, 82, 2, 12);
 
-/* Weapons */
-addWall(150, 10, 36, 2);
-addWall(150, 42, 36, 2);
-addWall(148, 12, 2, 30);
-addWall(186, 12, 2, 30);
+// Right wall
+wall(140, 56, 2, 12);
+wall(140, 82, 2, 12);
 
-/* Navigation */
-addWall(190, 50, 25, 2);
-addWall(190, 86, 25, 2);
-addWall(188, 52, 2, 34);
-addWall(215, 52, 2, 34);
+// Bottom wall
+wall(78, 92, 18, 2);
+wall(124, 92, 18, 2);
 
-/* Admin */
-addWall(142, 55, 32, 2);
-addWall(142, 85, 32, 2);
-addWall(140, 57, 2, 28);
-addWall(174, 57, 2, 28);
 
-/* O2 */
-addWall(145, 103, 30, 2);
-addWall(145, 137, 30, 2);
-addWall(143, 105, 2, 32);
-addWall(175, 105, 2, 32);
+// ------------------------------------------------------------
+// REACTOR
+// door on right
+// ------------------------------------------------------------
 
-/* Storage */
-addWall(82, 103, 56, 2);
-addWall(82, 140, 56, 2);
-addWall(80, 105, 2, 35);
-addWall(138, 105, 2, 35);
+wall(8, 60, 35, 2);
+wall(8, 60, 2, 32);
+wall(8, 90, 35, 2);
 
-/* Electrical */
-addWall(45, 55, 30, 2);
-addWall(45, 89, 30, 2);
-addWall(43, 57, 2, 32);
-addWall(75, 57, 2, 32);
+wall(41, 60, 2, 10);
+wall(41, 82, 2, 10);
 
-/* Communications */
-addWall(185, 103, 30, 2);
-addWall(185, 137, 30, 2);
-addWall(183, 105, 2, 32);
-addWall(215, 105, 2, 32);
 
-/*
-    Create openings in walls by not putting walls
-    across these corridor entrances.
+// ------------------------------------------------------------
+// ELECTRICAL
+// door on right
+// ------------------------------------------------------------
 
-    The spaces between wall sections are the doors.
-*/
+wall(45, 60, 28, 2);
+wall(45, 60, 2, 30);
+wall(45, 88, 28, 2);
 
-/* =========================================================
-   TASKS
-   ========================================================= */
+wall(71, 60, 2, 10);
+wall(71, 82, 2, 8);
 
-const TASK_DATA = [
+
+// ------------------------------------------------------------
+// ADMIN
+// doors left + right
+// ------------------------------------------------------------
+
+wall(145, 60, 32, 2);
+wall(145, 60, 2, 10);
+wall(145, 80, 2, 10);
+wall(175, 60, 2, 10);
+wall(175, 80, 2, 10);
+wall(145, 88, 32, 2);
+
+
+// ------------------------------------------------------------
+// NAVIGATION
+// door on left
+// ------------------------------------------------------------
+
+wall(192, 52, 24, 2);
+wall(192, 52, 2, 38);
+wall(214, 52, 2, 38);
+
+wall(192, 88, 8, 2);
+wall(208, 88, 8, 2);
+
+
+// ------------------------------------------------------------
+// LOWER ENGINE
+// door on top
+// ------------------------------------------------------------
+
+wall(15, 108, 13, 2);
+wall(44, 108, 13, 2);
+
+wall(15, 108, 2, 30);
+wall(55, 108, 2, 30);
+wall(15, 136, 42, 2);
+
+
+// ------------------------------------------------------------
+// SECURITY
+// door on top
+// ------------------------------------------------------------
+
+wall(60, 108, 10, 2);
+wall(80, 108, 10, 2);
+
+wall(60, 108, 2, 30);
+wall(88, 108, 2, 30);
+wall(60, 136, 30, 2);
+
+
+// ------------------------------------------------------------
+// STORAGE
+// doors top + left + right
+// ------------------------------------------------------------
+
+wall(94, 105, 15, 2);
+wall(123, 105, 15, 2);
+
+wall(94, 105, 2, 12);
+wall(94, 129, 2, 9);
+
+wall(136, 105, 2, 12);
+wall(136, 129, 2, 9);
+
+wall(94, 136, 44, 2);
+
+
+// ------------------------------------------------------------
+// O2
+// door on left
+// ------------------------------------------------------------
+
+wall(145, 105, 30, 2);
+wall(145, 105, 2, 10);
+wall(145, 127, 2, 11);
+wall(173, 105, 2, 33);
+wall(145, 136, 30, 2);
+
+
+// ------------------------------------------------------------
+// COMMUNICATIONS
+// door on top
+// ------------------------------------------------------------
+
+wall(184, 105, 32, 2);
+wall(184, 105, 2, 33);
+wall(214, 105, 2, 33);
+
+wall(184, 136, 32, 2);
+
+
+// ============================================================
+// TASKS
+// ============================================================
+
+const tasks = [
     {
         name: "Fix Wiring",
-        room: "Electrical",
         x: 54,
-        y: 70,
-        duration: 2200
+        y: 74,
+        duration: 2200,
+        done: false
     },
 
     {
         name: "Calibrate Reactor",
-        room: "Reactor",
         x: 25,
         y: 76,
-        duration: 2800
+        duration: 2600,
+        done: false
     },
 
     {
         name: "Inspect MedBay",
-        room: "MedBay",
-        x: 65,
+        x: 75,
         y: 25,
-        duration: 2200
+        duration: 2200,
+        done: false
     },
 
     {
         name: "Align Engine",
-        room: "Upper Engine",
         x: 35,
         y: 25,
-        duration: 2500
+        duration: 2400,
+        done: false
     },
 
     {
         name: "Fuel Engine",
-        room: "Lower Engine",
         x: 35,
-        y: 125,
-        duration: 2500
+        y: 124,
+        duration: 2600,
+        done: false
     },
 
     {
         name: "Upload Data",
-        room: "Admin",
-        x: 157,
-        y: 70,
-        duration: 2500
+        x: 160,
+        y: 74,
+        duration: 2300,
+        done: false
     },
 
     {
         name: "Clear Asteroids",
-        room: "Weapons",
-        x: 168,
-        y: 26,
-        duration: 3000
+        x: 169,
+        y: 25,
+        duration: 2500,
+        done: false
     },
 
     {
         name: "Navigate",
-        room: "Navigation",
         x: 203,
-        y: 68,
-        duration: 2400
+        y: 70,
+        duration: 2300,
+        done: false
     },
 
     {
         name: "Clean O2",
-        room: "O2",
         x: 158,
-        y: 120,
-        duration: 2300
+        y: 121,
+        duration: 2200,
+        done: false
     },
 
     {
         name: "Repair Communications",
-        room: "Communications",
-        x: 199,
-        y: 120,
-        duration: 2500
+        x: 200,
+        y: 121,
+        duration: 2500,
+        done: false
     },
 
     {
         name: "Organize Storage",
-        room: "Storage",
-        x: 110,
-        y: 122,
-        duration: 2200
+        x: 115,
+        y: 121,
+        duration: 2400,
+        done: false
     }
 ];
 
-tasks = TASK_DATA.map((task, index) => ({
-    ...task,
-    id: index,
-    complete: false
-}));
 
-/* =========================================================
-   INPUT
-   ========================================================= */
+// ============================================================
+// TASK STATE
+// ============================================================
 
-window.addEventListener("keydown", event => {
-    keys[event.key.toLowerCase()] = true;
+let activeTask = null;
+let taskProgress = 0;
+let taskStart = 0;
 
-    if (
-        event.key === " " ||
-        event.key === "e"
-    ) {
-        interact();
-    }
-});
 
-window.addEventListener("keyup", event => {
-    keys[event.key.toLowerCase()] = false;
-});
+// ============================================================
+// COLLISION
+// ============================================================
 
-/* =========================================================
-   COLLISION
-   ========================================================= */
-
-function circleRectCollision(
-    cx,
-    cy,
-    radius,
-    rect
-) {
-    const closestX = Math.max(
-        rect.x,
-        Math.min(cx, rect.x + rect.w)
-    );
-
-    const closestY = Math.max(
-        rect.y,
-        Math.min(cy, rect.y + rect.h)
-    );
+function circleRectCollision(cx, cy, radius, rect) {
+    const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+    const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
 
     const dx = cx - closestX;
     const dy = cy - closestY;
 
-    return (
-        dx * dx +
-        dy * dy <
-        radius * radius
-    );
+    return dx * dx + dy * dy < radius * radius;
 }
 
-function collides(x, y) {
-    for (const wall of walls) {
-        if (
-            circleRectCollision(
-                x,
-                y,
-                player.radius,
-                wall
-            )
-        ) {
-            return true;
+
+function canMoveTo(x, y) {
+    if (x < PLAYER_RADIUS + 4) return false;
+    if (y < PLAYER_RADIUS + 4) return false;
+    if (x > WORLD_W - PLAYER_RADIUS - 4) return false;
+    if (y > WORLD_H - PLAYER_RADIUS - 4) return false;
+
+    for (const w of walls) {
+        if (circleRectCollision(x, y, PLAYER_RADIUS, w)) {
+            return false;
         }
     }
 
-    return false;
+    return true;
 }
 
-function movePlayer(dx, dy) {
-    /*
-        Separate X/Y collision lets the player slide
-        along walls instead of getting stuck.
-    */
 
-    const nextX =
-        player.x + dx;
+// ============================================================
+// MOVEMENT
+// ============================================================
 
-    if (!collides(nextX, player.y)) {
-        player.x = nextX;
+function updatePlayer() {
+    let dx = 0;
+    let dy = 0;
+
+    if (keys["w"] || keys["arrowup"]) dy -= 1;
+    if (keys["s"] || keys["arrowdown"]) dy += 1;
+    if (keys["a"] || keys["arrowleft"]) dx -= 1;
+    if (keys["d"] || keys["arrowright"]) dx += 1;
+
+    if (dx === 0 && dy === 0) return;
+
+    const length = Math.hypot(dx, dy);
+
+    dx /= length;
+    dy /= length;
+
+    dx *= PLAYER_SPEED;
+    dy *= PLAYER_SPEED;
+
+    if (dx !== 0) {
+        const nx = player.x + dx;
+
+        if (canMoveTo(nx, player.y)) {
+            player.x = nx;
+        }
     }
 
-    const nextY =
-        player.y + dy;
+    if (dy !== 0) {
+        const ny = player.y + dy;
 
-    if (!collides(player.x, nextY)) {
-        player.y = nextY;
+        if (canMoveTo(player.x, ny)) {
+            player.y = ny;
+        }
     }
 
-    player.x = Math.max(
-        1,
-        Math.min(
-            WORLD_W - 1,
-            player.x
-        )
-    );
-
-    player.y = Math.max(
-        1,
-        Math.min(
-            WORLD_H - 1,
-            player.y
-        )
-    );
+    player.facing = Math.atan2(dy, dx);
 }
 
-/* =========================================================
-   TASK INTERACTION
-   ========================================================= */
 
-function nearestTask() {
-    let best = null;
-    let bestDistance = Infinity;
+// ============================================================
+// TASK SYSTEM
+// ============================================================
+
+function getNearbyTask() {
+    let closest = null;
+    let closestDistance = Infinity;
 
     for (const task of tasks) {
-        if (task.complete) {
-            continue;
-        }
+        if (task.done) continue;
 
-        const dx =
-            player.x - task.x;
+        const distance = Math.hypot(
+            player.x - task.x,
+            player.y - task.y
+        );
 
-        const dy =
-            player.y - task.y;
-
-        const d =
-            Math.hypot(dx, dy);
-
-        if (d < bestDistance) {
-            bestDistance = d;
-            best = task;
+        if (distance < 3.5 && distance < closestDistance) {
+            closest = task;
+            closestDistance = distance;
         }
     }
 
-    if (bestDistance <= 3) {
-        return best;
-    }
-
-    return null;
+    return closest;
 }
 
-function interact() {
-    if (activeTask) {
-        return;
-    }
-
-    const task = nearestTask();
-
-    if (!task) {
-        return;
-    }
-
-    activeTask = {
-        task,
-        started: performance.now()
-    };
-}
 
 function updateTask() {
-    if (!activeTask) {
+    const nearby = getNearbyTask();
+
+    if (!nearby) {
+        activeTask = null;
+        taskProgress = 0;
         return;
     }
 
-    const elapsed =
-        performance.now() -
-        activeTask.started;
+    if (keys["e"] || keys[" "]) {
+        if (activeTask !== nearby) {
+            activeTask = nearby;
+            taskStart = performance.now();
+        }
 
-    const duration =
-        activeTask.task.duration;
+        const elapsed = performance.now() - taskStart;
 
-    if (elapsed >= duration) {
-        activeTask.task.complete = true;
+        taskProgress = Math.min(
+            elapsed / nearby.duration,
+            1
+        );
 
-        completedTasks++;
-
+        if (taskProgress >= 1) {
+            nearby.done = true;
+            activeTask = null;
+            taskProgress = 0;
+        }
+    } else {
         activeTask = null;
+        taskProgress = 0;
     }
 }
 
-/* =========================================================
-   CAMERA
-   ========================================================= */
+
+// ============================================================
+// CAMERA
+// ============================================================
 
 function updateCamera() {
-    /*
-        Smooth follow.
-    */
-
-    camera.x +=
-        (player.x - camera.x) * 0.12;
-
-    camera.y +=
-        (player.y - camera.y) * 0.12;
-
-    const halfWidth =
-        window.innerWidth /
-        camera.zoom /
-        2;
-
-    const halfHeight =
-        window.innerHeight /
-        camera.zoom /
-        2;
-
-    camera.x = Math.max(
-        halfWidth,
-        Math.min(
-            WORLD_W - halfWidth,
-            camera.x
-        )
-    );
-
-    camera.y = Math.max(
-        halfHeight,
-        Math.min(
-            WORLD_H - halfHeight,
-            camera.y
-        )
-    );
+    cameraX += (player.x - cameraX) * 0.12;
+    cameraY += (player.y - cameraY) * 0.12;
 }
 
-/* =========================================================
-   DRAWING
-   ========================================================= */
+
+// ============================================================
+// WORLD TO SCREEN
+// ============================================================
 
 function worldToScreen(x, y) {
     return {
-        x:
-            (x - camera.x) *
-                camera.zoom +
-            window.innerWidth / 2,
-
-        y:
-            (y - camera.y) *
-                camera.zoom +
-            window.innerHeight / 2
+        x: (x - cameraX) * ZOOM + canvas.width / 2,
+        y: (y - cameraY) * ZOOM + canvas.height / 2
     };
 }
 
-function drawRect(
-    x,
-    y,
-    w,
-    h,
-    fill,
-    stroke = null
-) {
-    const p =
-        worldToScreen(x, y);
 
-    ctx.fillStyle = fill;
+function screenRect(x, y, w, h) {
+    const p = worldToScreen(x, y);
 
-    ctx.fillRect(
-        p.x,
-        p.y,
-        w * camera.zoom,
-        h * camera.zoom
-    );
-
-    if (stroke) {
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth =
-            Math.max(
-                1,
-                camera.zoom * 0.35
-            );
-
-        ctx.strokeRect(
-            p.x,
-            p.y,
-            w * camera.zoom,
-            h * camera.zoom
-        );
-    }
+    return {
+        x: p.x,
+        y: p.y,
+        w: w * ZOOM,
+        h: h * ZOOM
+    };
 }
 
-function drawMap() {
-    ctx.fillStyle = "#07090c";
+
+// ============================================================
+// DRAW FLOOR
+// ============================================================
+
+function drawFloor() {
+    ctx.fillStyle = "#15191e";
+
+    const topLeft = worldToScreen(0, 0);
 
     ctx.fillRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
+        topLeft.x,
+        topLeft.y,
+        WORLD_W * ZOOM,
+        WORLD_H * ZOOM
     );
 
-    /*
-        Floor areas.
-    */
 
+    // Corridor floors
+    ctx.fillStyle = "#252a30";
+
+    for (const c of corridors) {
+        const r = screenRect(c.x, c.y, c.w, c.h);
+
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+
+
+    // Room floors
     for (const room of rooms) {
-        drawRect(
+        const r = screenRect(
             room.x,
             room.y,
             room.w,
-            room.h,
-            "#171c22",
-            "#69737e"
+            room.h
         );
 
-        drawRect(
-            room.x + 2,
-            room.y + 2,
-            room.w - 4,
-            room.h - 4,
-            "#1d232a"
+        ctx.fillStyle = "#20252b";
+
+        ctx.fillRect(
+            r.x,
+            r.y,
+            r.w,
+            r.h
         );
 
-        const center =
-            worldToScreen(
-                room.x + room.w / 2,
-                room.y + room.h / 2
-            );
+        ctx.strokeStyle = "#353b43";
+        ctx.lineWidth = 2;
 
-        ctx.font =
-            `${Math.max(
-                10,
-                camera.zoom * 2.2
-            )}px Arial`;
-
-        ctx.textAlign = "center";
-
-        ctx.fillStyle =
-            "rgba(255,255,255,0.25)";
-
-        ctx.fillText(
-            room.name.toUpperCase(),
-            center.x,
-            center.y
-        );
-    }
-
-    /*
-        Corridors are the spaces between rooms,
-        giving the map its open ship layout.
-    */
-
-    drawRect(
-        56,
-        20,
-        8,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        76,
-        67,
-        10,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        132,
-        67,
-        12,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        172,
-        65,
-        20,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        130,
-        25,
-        20,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        180,
-        25,
-        14,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        126,
-        85,
-        10,
-        22,
-        "#10151a"
-    );
-
-    drawRect(
-        55,
-        85,
-        10,
-        25,
-        "#10151a"
-    );
-
-    drawRect(
-        136,
-        115,
-        12,
-        10,
-        "#10151a"
-    );
-
-    drawRect(
-        173,
-        115,
-        14,
-        10,
-        "#10151a"
-    );
-
-    /*
-        Walls.
-    */
-
-    for (const wall of walls) {
-        drawRect(
-            wall.x,
-            wall.y,
-            wall.w,
-            wall.h,
-            "#4c5661",
-            "#77828e"
+        ctx.strokeRect(
+            r.x,
+            r.y,
+            r.w,
+            r.h
         );
     }
 }
 
-function drawCafeteriaDetails() {
-    const room =
-        rooms.find(
-            r => r.name === "Cafeteria"
+
+// ============================================================
+// DRAW WALLS
+// ============================================================
+
+function drawWalls() {
+    for (const w of walls) {
+        const r = screenRect(
+            w.x,
+            w.y,
+            w.w,
+            w.h
         );
 
+        ctx.fillStyle = "#59616b";
+
+        ctx.fillRect(
+            r.x,
+            r.y,
+            r.w,
+            r.h
+        );
+
+        ctx.strokeStyle = "#737c87";
+        ctx.lineWidth = 1;
+
+        ctx.strokeRect(
+            r.x,
+            r.y,
+            r.w,
+            r.h
+        );
+    }
+}
+
+
+// ============================================================
+// ROOM LABELS
+// ============================================================
+
+function drawRoomLabels() {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (const room of rooms) {
+        const p = worldToScreen(
+            room.x + room.w / 2,
+            room.y + room.h / 2
+        );
+
+        ctx.font = "bold 13px Arial";
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+
+        ctx.fillText(
+            room.name,
+            p.x,
+            p.y
+        );
+    }
+}
+
+
+// ============================================================
+// CAFETERIA DETAILS
+// ============================================================
+
+function drawCafeteria() {
     const tables = [
-        [95, 68],
-        [125, 68],
-        [95, 83],
-        [125, 83]
+        [93, 66],
+        [127, 66],
+        [93, 84],
+        [127, 84]
     ];
 
     for (const [x, y] of tables) {
-        const p =
-            worldToScreen(x, y);
+        const p = worldToScreen(x, y);
 
         ctx.beginPath();
 
         ctx.arc(
             p.x,
             p.y,
-            4 * camera.zoom,
+            4.5 * ZOOM,
             0,
             Math.PI * 2
         );
 
-        ctx.fillStyle = "#303943";
+        ctx.fillStyle = "#303740";
         ctx.fill();
 
-        ctx.strokeStyle = "#7a8590";
+        ctx.strokeStyle = "#68717c";
+        ctx.lineWidth = 1.5;
 
         ctx.stroke();
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            1.5 * ZOOM,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle = "#444c56";
+        ctx.fill();
     }
 
-    const button =
-        worldToScreen(
-            room.x + room.w / 2,
-            room.y + room.h / 2
-        );
+
+    // Emergency button table
+    const button = worldToScreen(110, 75);
 
     ctx.beginPath();
 
     ctx.arc(
         button.x,
         button.y,
-        3 * camera.zoom,
+        2.5 * ZOOM,
         0,
         Math.PI * 2
     );
 
-    ctx.fillStyle = "#c73737";
+    ctx.fillStyle = "#323941";
     ctx.fill();
 
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = "#727b85";
+    ctx.lineWidth = 1;
 
     ctx.stroke();
+
+    ctx.beginPath();
+
+    ctx.arc(
+        button.x,
+        button.y,
+        1 * ZOOM,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle = "#c73838";
+    ctx.fill();
 }
+
+
+// ============================================================
+// TASK MARKERS
+// ============================================================
 
 function drawTasks() {
     for (const task of tasks) {
-        if (task.complete) {
-            continue;
-        }
+        if (task.done) continue;
 
-        const p =
-            worldToScreen(
-                task.x,
-                task.y
-            );
+        const p = worldToScreen(
+            task.x,
+            task.y
+        );
 
         const pulse =
             1 +
-            Math.sin(
-                performance.now() / 300
-            ) *
-            0.15;
+            Math.sin(performance.now() / 250) * 0.12;
 
         ctx.beginPath();
 
         ctx.arc(
             p.x,
             p.y,
-            2.5 *
-                camera.zoom *
-                pulse,
+            2.2 * ZOOM * pulse,
             0,
             Math.PI * 2
         );
 
-        ctx.fillStyle = "#e7c84b";
-
+        ctx.fillStyle = "#f2c94c";
         ctx.fill();
 
-        ctx.strokeStyle =
-            "rgba(255,255,255,0.7)";
+        ctx.strokeStyle = "#fff0a0";
+        ctx.lineWidth = 1;
 
         ctx.stroke();
+
+
+        if (
+            Math.hypot(
+                player.x - task.x,
+                player.y - task.y
+            ) < 3.5
+        ) {
+            ctx.font = "bold 12px Arial";
+            ctx.textAlign = "center";
+
+            ctx.fillStyle = "#ffffff";
+
+            ctx.fillText(
+                "E",
+                p.x,
+                p.y - 16
+            );
+        }
     }
 }
 
+
+// ============================================================
+// PLAYER
+// ============================================================
+
 function drawPlayer() {
-    const p =
-        worldToScreen(
-            player.x,
-            player.y
-        );
+    const p = worldToScreen(
+        player.x,
+        player.y
+    );
 
-    const r =
-        player.radius *
-        camera.zoom;
+    const size = PLAYER_RADIUS * ZOOM;
 
-    /*
-        Shadow.
-    */
-
+    // Shadow
     ctx.beginPath();
 
     ctx.ellipse(
         p.x,
-        p.y + r * 0.8,
-        r * 0.9,
-        r * 0.35,
+        p.y + size * 0.85,
+        size * 0.85,
+        size * 0.35,
         0,
         0,
         Math.PI * 2
     );
 
-    ctx.fillStyle =
-        "rgba(0,0,0,0.45)";
-
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.fill();
 
-    /*
-        Body.
-    */
 
+    // Body
     ctx.beginPath();
 
     ctx.arc(
         p.x,
         p.y,
-        r,
+        size,
         0,
         Math.PI * 2
     );
 
-    ctx.fillStyle = "#e8e8e8";
-
+    ctx.fillStyle = player.color;
     ctx.fill();
 
-    ctx.strokeStyle = "#ffffff";
-
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2;
 
     ctx.stroke();
 
-    /*
-        Visor.
-    */
+
+    // Visor
+    const visorX =
+        p.x +
+        Math.cos(player.facing) * size * 0.35;
+
+    const visorY =
+        p.y +
+        Math.sin(player.facing) * size * 0.35;
 
     ctx.beginPath();
 
     ctx.ellipse(
-        p.x + r * 0.25,
-        p.y - r * 0.25,
-        r * 0.48,
-        r * 0.3,
-        -0.2,
+        visorX,
+        visorY,
+        size * 0.55,
+        size * 0.35,
+        player.facing,
         0,
         Math.PI * 2
     );
 
-    ctx.fillStyle = "#4c9bb0";
-
+    ctx.fillStyle = "#bde9ff";
     ctx.fill();
 
-    ctx.strokeStyle = "#b8f0ff";
+    ctx.strokeStyle = "#18242c";
+    ctx.lineWidth = 1.5;
 
     ctx.stroke();
 }
 
-function drawUI() {
-    /*
-        Top-left.
-    */
 
-    ctx.fillStyle =
-        "rgba(8,10,13,0.9)";
+// ============================================================
+// TASK UI
+// ============================================================
+
+function drawTaskUI() {
+    const nearby = getNearbyTask();
+
+    if (!nearby) return;
+
+    const width = 360;
+    const height = activeTask ? 70 : 48;
+
+    const x = canvas.width / 2 - width / 2;
+    const y = canvas.height - 105;
+
+    ctx.fillStyle = "rgba(8,10,13,0.92)";
 
     ctx.fillRect(
-        15,
-        15,
-        230,
-        75
+        x,
+        y,
+        width,
+        height
     );
 
+    ctx.strokeStyle = "#69727d";
+    ctx.lineWidth = 2;
+
+    ctx.strokeRect(
+        x,
+        y,
+        width,
+        height
+    );
+
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.font = "bold 16px Arial";
     ctx.fillStyle = "#ffffff";
 
-    ctx.font =
-        "bold 18px Arial";
+    ctx.fillText(
+        nearby.name,
+        canvas.width / 2,
+        y + 18
+    );
+
+
+    if (!activeTask) {
+        ctx.font = "13px Arial";
+        ctx.fillStyle = "#c8ced4";
+
+        ctx.fillText(
+            "Press E to complete",
+            canvas.width / 2,
+            y + 38
+        );
+
+        return;
+    }
+
+
+    // Progress bar
+    const barX = x + 25;
+    const barY = y + 43;
+    const barW = width - 50;
+    const barH = 12;
+
+    ctx.fillStyle = "#20252b";
+
+    ctx.fillRect(
+        barX,
+        barY,
+        barW,
+        barH
+    );
+
+    ctx.fillStyle = "#55d66f";
+
+    ctx.fillRect(
+        barX,
+        barY,
+        barW * taskProgress,
+        barH
+    );
+
+    ctx.strokeStyle = "#858e99";
+    ctx.lineWidth = 1;
+
+    ctx.strokeRect(
+        barX,
+        barY,
+        barW,
+        barH
+    );
+}
+
+
+// ============================================================
+// HUD
+// ============================================================
+
+function drawHUD() {
+    const completed = tasks.filter(t => t.done).length;
 
     ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+
+    ctx.fillStyle = "rgba(8,10,13,0.85)";
+
+    ctx.fillRect(
+        16,
+        16,
+        210,
+        74
+    );
+
+    ctx.strokeStyle = "#59616b";
+    ctx.lineWidth = 2;
+
+    ctx.strokeRect(
+        16,
+        16,
+        210,
+        74
+    );
+
+
+    ctx.font = "bold 17px Arial";
+    ctx.fillStyle = "#ffffff";
 
     ctx.fillText(
         "TASKS",
         30,
-        40
+        29
     );
 
-    ctx.font =
-        "15px Arial";
 
-    ctx.fillStyle = "#b7c0c8";
+    ctx.font = "14px Arial";
+    ctx.fillStyle = "#bfc6ce";
 
     ctx.fillText(
-        `${completedTasks} / ${tasks.length}`,
+        `${completed} / ${tasks.length} completed`,
         30,
-        64
+        55
     );
 
-    /*
-        Task prompt.
-    */
 
-    const task =
-        nearestTask();
+    // Controls
+    ctx.textAlign = "right";
 
-    if (
-        task &&
-        !activeTask
-    ) {
-        const width = 270;
-        const height = 60;
+    ctx.fillStyle = "rgba(8,10,13,0.75)";
 
-        const x =
-            window.innerWidth / 2 -
-            width / 2;
+    ctx.fillRect(
+        canvas.width - 220,
+        16,
+        204,
+        48
+    );
 
-        const y =
-            window.innerHeight -
-            100;
+    ctx.font = "13px Arial";
+    ctx.fillStyle = "#c8ced4";
 
-        ctx.fillStyle =
-            "rgba(8,10,13,0.92)";
-
-        ctx.fillRect(
-            x,
-            y,
-            width,
-            height
-        );
-
-        ctx.textAlign = "center";
-
-        ctx.font =
-            "bold 17px Arial";
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.fillText(
-            `[ E ]  ${task.name}`,
-            window.innerWidth / 2,
-            y + 25
-        );
-
-        ctx.font =
-            "12px Arial";
-
-        ctx.fillStyle = "#9fa8b1";
-
-        ctx.fillText(
-            task.room,
-            window.innerWidth / 2,
-            y + 45
-        );
-    }
-
-    /*
-        Task progress.
-    */
-
-    if (activeTask) {
-        const elapsed =
-            performance.now() -
-            activeTask.started;
-
-        const progress =
-            Math.min(
-                1,
-                elapsed /
-                    activeTask.task.duration
-            );
-
-        const width = 300;
-
-        const x =
-            window.innerWidth / 2 -
-            width / 2;
-
-        const y =
-            window.innerHeight -
-            90;
-
-        ctx.fillStyle =
-            "rgba(8,10,13,0.95)";
-
-        ctx.fillRect(
-            x - 10,
-            y - 10,
-            width + 20,
-            55
-        );
-
-        ctx.fillStyle = "#ffffff";
-
-        ctx.textAlign = "center";
-
-        ctx.font =
-            "bold 14px Arial";
-
-        ctx.fillText(
-            activeTask.task.name,
-            window.innerWidth / 2,
-            y + 8
-        );
-
-        ctx.fillStyle = "#30363d";
-
-        ctx.fillRect(
-            x,
-            y + 18,
-            width,
-            8
-        );
-
-        ctx.fillStyle = "#e4c94c";
-
-        ctx.fillRect(
-            x,
-            y + 18,
-            width * progress,
-            8
-        );
-    }
+    ctx.fillText(
+        "WASD / ARROWS  •  E = TASK",
+        canvas.width - 30,
+        34
+    );
 }
 
-/* =========================================================
-   GAME LOOP
-   ========================================================= */
+
+// ============================================================
+// UPDATE
+// ============================================================
 
 function update() {
-    let dx = 0;
-    let dy = 0;
-
-    if (
-        keys["w"] ||
-        keys["arrowup"]
-    ) {
-        dy -= PLAYER_SPEED;
-    }
-
-    if (
-        keys["s"] ||
-        keys["arrowdown"]
-    ) {
-        dy += PLAYER_SPEED;
-    }
-
-    if (
-        keys["a"] ||
-        keys["arrowleft"]
-    ) {
-        dx -= PLAYER_SPEED;
-    }
-
-    if (
-        keys["d"] ||
-        keys["arrowright"]
-    ) {
-        dx += PLAYER_SPEED;
-    }
-
-    /*
-        Normalize diagonal movement.
-    */
-
-    if (dx !== 0 && dy !== 0) {
-        const length =
-            Math.hypot(dx, dy);
-
-        dx /= length;
-        dy /= length;
-
-        dx *= PLAYER_SPEED;
-        dy *= PLAYER_SPEED;
-    }
-
-    movePlayer(dx, dy);
-
+    updatePlayer();
     updateTask();
     updateCamera();
 }
 
-function draw() {
-    update();
 
+// ============================================================
+// DRAW
+// ============================================================
+
+function draw() {
     ctx.clearRect(
         0,
         0,
-        window.innerWidth,
-        window.innerHeight
+        canvas.width,
+        canvas.height
     );
 
-    drawMap();
-    drawCafeteriaDetails();
+    update();
+
+    drawFloor();
+    drawWalls();
+    drawRoomLabels();
+    drawCafeteria();
     drawTasks();
     drawPlayer();
-    drawUI();
+
+    drawHUD();
+    drawTaskUI();
 
     requestAnimationFrame(draw);
 }
 
-/* =========================================================
-   RESIZE
-   ========================================================= */
 
-function resize() {
-    const dpr =
-        window.devicePixelRatio || 1;
-
-    canvas.width =
-        window.innerWidth * dpr;
-
-    canvas.height =
-        window.innerHeight * dpr;
-
-    canvas.style.width =
-        `${window.innerWidth}px`;
-
-    canvas.style.height =
-        `${window.innerHeight}px`;
-
-    ctx.setTransform(
-        dpr,
-        0,
-        0,
-        dpr,
-        0,
-        0
-    );
-}
-
-window.addEventListener(
-    "resize",
-    resize
-);
-
-resize();
+// ============================================================
+// START
+// ============================================================
 
 draw();
