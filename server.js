@@ -3,37 +3,57 @@ const path = require("path");
 const crypto = require("crypto");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const PORT = process.env.PORT || 3000;
+/*
+    AI AMONG US
+    Autonomous server-side AI simulation.
 
-// ============================================================
-// GAME SETTINGS
-// ============================================================
+    Features:
+    - Cafeteria spawning
+    - Task movement
+    - Wall-safe navigation
+    - Impostor kills
+    - Body reports
+    - Emergency meetings
+    - AI chat
+    - AI voting
+    - Ejections
+    - Task victory
+    - Impostor victory
+*/
 
-const PLAYER_COUNT = 10;
-const IMPOSTOR_COUNT = 2;
+const WORLD = {
+    width: 60,
+    height: 40
+};
 
-// Among Us default movement speed is approximately
-// 2.5 game-units/sec at 1.0x speed.
-// Our map uses 60 x 40 game units.
 const PLAYER_SPEED = 2.5;
+const KILL_RANGE = 1.25;
+const KILL_COOLDOWN = 25;
+const MEETING_COOLDOWN = 20;
+const MEETING_TIME = 18;
+const VOTING_TIME = 12;
+const TICK_RATE = 100;
+const TASK_TIME = 4;
 
-const KILL_COOLDOWN = 30;
-const KILL_DISTANCE = 1.15;
+const COLORS = [
+    "#c83b3b",
+    "#4b8dcc",
+    "#6bcf5b",
+    "#d6a638",
+    "#a95bd3",
+    "#55cfc4",
+    "#d8793d",
+    "#e8e8e8",
+    "#8d5b3e",
+    "#e36c9d"
+];
 
-const TASK_TIME = 5;
-
-const DISCUSSION_TIME = 25;
-const VOTING_TIME = 20;
-
-const EMERGENCY_COOLDOWN = 20;
-
-const TICK_MS = 100;
-
-const names = [
+const NAMES = [
     "Bob",
     "Alice",
     "Dave",
@@ -53,20 +73,10 @@ const names = [
     "Leo",
     "Zoe",
     "Oscar",
-    "Mia",
-    "Ben",
-    "Ivy",
-    "Theo",
-    "Lily",
-    "Ash",
-    "Coco",
-    "Felix",
-    "Sophie",
-    "Jake",
-    "Piper"
+    "Mia"
 ];
 
-const personalities = [
+const PERSONALITIES = [
     "paranoid",
     "calm",
     "aggressive",
@@ -84,2509 +94,489 @@ const personalities = [
     "dramatic"
 ];
 
-const colors = [
-    "#c72f2f",
-    "#3b82c4",
-    "#4aa564",
-    "#c87527",
-    "#8f4cc2",
-    "#d99b25",
-    "#45a8a1",
-    "#b83c91",
-    "#6e7680",
-    "#ffffff"
-];
+/*
+    Approximate Skeld navigation areas.
 
-// ============================================================
-// THE SKELD
-// 60 x 40 coordinate system
-// ============================================================
+    These are WALKABLE areas.
+    AIs only travel through these areas.
+*/
 
-const WORLD = {
-    width: 60,
-    height: 40
-};
+const WALKABLE = [
+    // Cafeteria
+    { x: 22, y: 13, w: 16, h: 12 },
 
-// Rooms are intentionally rectangular collision regions.
-// Corridors connect their entrances.
-//
-// Layout:
-//
-//                  UPPER ENGINE     CAFETERIA      WEAPONS
-//                       |                |             |
-//                    MEDBAY             |             |
-//                       |                |          NAVIGATION
-//                    SECURITY            |             |
-//                       |                |             |
-//                  ELECTRICAL         STORAGE          O2
-//                       |                |             |
-//                    LOWER ENGINE      ADMIN         SHIELDS
-//                       |                |
-//                    REACTOR       COMMUNICATIONS
-//
+    // Upper Engine
+    { x: 7, y: 4, w: 10, h: 10 },
 
-const rooms = {
-    UpperEngine: {
-        name: "Upper Engine",
-        x: 2,
-        y: 2,
-        w: 8,
-        h: 8
-    },
+    // Reactor
+    { x: 2, y: 14, w: 10, h: 12 },
 
-    Reactor: {
-        name: "Reactor",
-        x: 2,
-        y: 12,
-        w: 8,
-        h: 10
-    },
+    // Lower Engine
+    { x: 7, y: 27, w: 10, h: 10 },
 
-    LowerEngine: {
-        name: "Lower Engine",
-        x: 2,
-        y: 24,
-        w: 8,
-        h: 8
-    },
+    // Security
+    { x: 15, y: 6, w: 7, h: 7 },
 
-    MedBay: {
-        name: "MedBay",
-        x: 15,
-        y: 7,
-        w: 8,
-        h: 6
-    },
+    // MedBay
+    { x: 18, y: 5, w: 9, h: 8 },
 
-    Security: {
-        name: "Security",
-        x: 11,
-        y: 10,
-        w: 6,
-        h: 6
-    },
+    // Electrical
+    { x: 14, y: 28, w: 9, h: 8 },
 
-    Electrical: {
-        name: "Electrical",
-        x: 13,
-        y: 17,
-        w: 7,
-        h: 6
-    },
+    // Storage
+    { x: 22, y: 25, w: 10, h: 12 },
 
-    Cafeteria: {
-        name: "Cafeteria",
-        x: 18,
-        y: 14,
-        w: 12,
-        h: 9
-    },
+    // Admin
+    { x: 31, y: 27, w: 8, h: 8 },
 
-    Weapons: {
-        name: "Weapons",
-        x: 26,
-        y: 2,
-        w: 9,
-        h: 6
-    },
+    // Weapons
+    { x: 38, y: 8, w: 9, h: 8 },
 
-    Navigation: {
-        name: "Navigation",
-        x: 30,
-        y: 10,
-        w: 8,
-        h: 8
-    },
+    // O2
+    { x: 39, y: 18, w: 7, h: 7 },
 
-    O2: {
-        name: "O2",
-        x: 34,
-        y: 20,
-        w: 7,
-        h: 6
-    },
+    // Navigation
+    { x: 47, y: 18, w: 10, h: 10 },
 
-    Admin: {
-        name: "Admin",
-        x: 24,
-        y: 15,
-        w: 7,
-        h: 7
-    },
+    // Communications
+    { x: 38, y: 29, w: 8, h: 7 },
 
-    Storage: {
-        name: "Storage",
-        x: 11,
-        y: 23,
-        w: 11,
-        h: 7
-    },
-
-    Communications: {
-        name: "Communications",
-        x: 21,
-        y: 27,
-        w: 7,
-        h: 5
-    },
-
-    Shields: {
-        name: "Shields",
-        x: 32,
-        y: 26,
-        w: 7,
-        h: 6
-    }
-};
-
-// ============================================================
-// WALKABLE MAP
-// ============================================================
-
-const walkableRects = [
-    // Rooms
-    ...Object.values(rooms).map(r => ({
-        x: r.x,
-        y: r.y,
-        w: r.w,
-        h: r.h
-    })),
+    // Shields
+    { x: 47, y: 29, w: 10, h: 7 },
 
     // Main corridors
-
-    // Upper Engine -> MedBay
-    {
-        x: 10,
-        y: 8,
-        w: 5,
-        h: 2
-    },
-
-    // MedBay -> Security
-    {
-        x: 14,
-        y: 11,
-        w: 2,
-        h: 4
-    },
-
-    // Security -> Cafeteria
-    {
-        x: 16,
-        y: 12,
-        w: 4,
-        h: 2
-    },
-
-    // Cafeteria -> Weapons
-    {
-        x: 29,
-        y: 6,
-        w: 4,
-        h: 2
-    },
-
-    // Cafeteria -> Admin
-    {
-        x: 27,
-        y: 22,
-        w: 2,
-        h: 3
-    },
-
-    // Cafeteria -> Storage
-    {
-        x: 19,
-        y: 22,
-        w: 3,
-        h: 4
-    },
-
-    // Storage -> Electrical
-    {
-        x: 18,
-        y: 20,
-        w: 3,
-        h: 4
-    },
-
-    // Storage -> Lower Engine
-    {
-        x: 8,
-        y: 27,
-        w: 5,
-        h: 2
-    },
-
-    // Lower Engine -> Reactor
-    {
-        x: 6,
-        y: 21,
-        w: 2,
-        h: 5
-    },
-
-    // Reactor -> Security/Electrical corridor
-    {
-        x: 8,
-        y: 15,
-        w: 5,
-        h: 2
-    },
-
-    // Admin -> Communications
-    {
-        x: 27,
-        y: 25,
-        w: 2,
-        h: 4
-    },
-
-    // Admin -> O2
-    {
-        x: 30,
-        y: 21,
-        w: 5,
-        h: 2
-    },
-
-    // O2 -> Navigation
-    {
-        x: 37,
-        y: 15,
-        w: 3,
-        h: 7
-    },
-
-    // Navigation -> Weapons
-    {
-        x: 34,
-        y: 7,
-        w: 3,
-        h: 5
-    },
-
-    // O2 -> Shields
-    {
-        x: 37,
-        y: 24,
-        w: 3,
-        h: 4
-    },
-
-    // Communications -> Shields
-    {
-        x: 28,
-        y: 29,
-        w: 6,
-        h: 2
-    }
+    { x: 12, y: 12, w: 12, h: 4 },
+    { x: 36, y: 12, w: 5, h: 4 },
+    { x: 26, y: 21, w: 12, h: 5 },
+    { x: 12, y: 21, w: 12, h: 5 },
+    { x: 36, y: 21, w: 7, h: 5 },
+    { x: 43, y: 23, w: 5, h: 5 },
+    { x: 32, y: 34, w: 8, h: 4 }
 ];
 
-// ============================================================
-// TASKS
-// ============================================================
+/*
+    Navigation graph.
 
-const taskDefinitions = [
+    Instead of allowing the AI to draw a straight line through
+    walls, it moves through connected waypoints.
+*/
+
+const NODES = {
+    cafeteria: [30, 19],
+
+    upperEngine: [12, 9],
+    reactor: [7, 20],
+    lowerEngine: [12, 32],
+
+    security: [18, 9],
+    medbay: [22, 9],
+
+    electrical: [18, 32],
+    storage: [27, 31],
+    admin: [35, 31],
+
+    weapons: [42, 12],
+    o2: [43, 21],
+    navigation: [52, 23],
+
+    communications: [42, 33],
+    shields: [52, 33]
+};
+
+const GRAPH = {
+    cafeteria: [
+        "upperEngine",
+        "medbay",
+        "weapons",
+        "storage",
+        "admin"
+    ],
+
+    upperEngine: [
+        "cafeteria",
+        "reactor",
+        "security"
+    ],
+
+    reactor: [
+        "upperEngine",
+        "lowerEngine"
+    ],
+
+    lowerEngine: [
+        "reactor",
+        "electrical",
+        "storage"
+    ],
+
+    security: [
+        "upperEngine",
+        "medbay"
+    ],
+
+    medbay: [
+        "cafeteria",
+        "security"
+    ],
+
+    electrical: [
+        "lowerEngine",
+        "storage"
+    ],
+
+    storage: [
+        "cafeteria",
+        "lowerEngine",
+        "electrical",
+        "admin"
+    ],
+
+    admin: [
+        "storage",
+        "o2",
+        "communications"
+    ],
+
+    weapons: [
+        "cafeteria",
+        "o2"
+    ],
+
+    o2: [
+        "weapons",
+        "admin",
+        "navigation"
+    ],
+
+    navigation: [
+        "o2",
+        "shields"
+    ],
+
+    communications: [
+        "admin",
+        "shields"
+    ],
+
+    shields: [
+        "navigation",
+        "communications"
+    ]
+};
+
+const TASKS = [
     {
-        id: "cafeteria_garbage",
+        name: "Fix Wiring",
+        room: "Electrical",
+        node: "electrical"
+    },
+    {
+        name: "Download Data",
+        room: "Admin",
+        node: "admin"
+    },
+    {
         name: "Empty Garbage",
-        room: "Cafeteria",
-        x: 19,
-        y: 15
-    },
-
-    {
-        id: "cafeteria_download",
-        name: "Download Data",
-        room: "Cafeteria",
-        x: 28,
-        y: 16
-    },
-
-    {
-        id: "cafeteria_wires",
-        name: "Fix Wiring",
-        room: "Cafeteria",
-        x: 28,
-        y: 20
-    },
-
-    {
-        id: "weapons_asteroids",
-        name: "Clear Asteroids",
-        room: "Weapons",
-        x: 31,
-        y: 4
-    },
-
-    {
-        id: "weapons_download",
-        name: "Download Data",
-        room: "Weapons",
-        x: 27,
-        y: 5
-    },
-
-    {
-        id: "navigation_chart",
-        name: "Chart Course",
-        room: "Navigation",
-        x: 32,
-        y: 12
-    },
-
-    {
-        id: "navigation_steering",
-        name: "Stabilize Steering",
-        room: "Navigation",
-        x: 36,
-        y: 15
-    },
-
-    {
-        id: "navigation_upload",
-        name: "Upload Data",
-        room: "Navigation",
-        x: 32,
-        y: 16
-    },
-
-    {
-        id: "navigation_wires",
-        name: "Fix Wiring",
-        room: "Navigation",
-        x: 37,
-        y: 11
-    },
-
-    {
-        id: "o2_filter",
-        name: "Clean O2 Filter",
-        room: "O2",
-        x: 37,
-        y: 22
-    },
-
-    {
-        id: "o2_garbage",
-        name: "Empty Chute",
-        room: "O2",
-        x: 39,
-        y: 25
-    },
-
-    {
-        id: "shields_prime",
-        name: "Prime Shields",
-        room: "Shields",
-        x: 35,
-        y: 30
-    },
-
-    {
-        id: "communications_download",
-        name: "Download Data",
-        room: "Communications",
-        x: 24,
-        y: 29
-    },
-
-    {
-        id: "communications_fix",
-        name: "Fix Communications",
-        room: "Communications",
-        x: 26,
-        y: 30
-    },
-
-    {
-        id: "storage_fuel",
-        name: "Fuel Engines",
         room: "Storage",
-        x: 16,
-        y: 26
+        node: "storage"
     },
-
     {
-        id: "storage_wires",
-        name: "Fix Wiring",
-        room: "Storage",
-        x: 19,
-        y: 28
+        name: "Calibrate Reactor",
+        room: "Reactor",
+        node: "reactor"
     },
-
     {
-        id: "admin_card",
-        name: "Swipe Card",
-        room: "Admin",
-        x: 26,
-        y: 18
+        name: "Inspect Samples",
+        room: "MedBay",
+        node: "medbay"
     },
-
     {
-        id: "admin_upload",
         name: "Upload Data",
         room: "Admin",
-        x: 28,
-        y: 20
+        node: "admin"
     },
-
     {
-        id: "electrical_power",
-        name: "Divert Power",
-        room: "Electrical",
-        x: 17,
-        y: 19
+        name: "Clean O2",
+        room: "O2",
+        node: "o2"
     },
-
     {
-        id: "electrical_wires",
-        name: "Fix Wiring",
-        room: "Electrical",
-        x: 15,
-        y: 21
+        name: "Align Engine",
+        room: "Upper Engine",
+        node: "upperEngine"
     },
-
     {
-        id: "electrical_calibrate",
-        name: "Calibrate Distributor",
-        room: "Electrical",
-        x: 19,
-        y: 18
-    },
-
-    {
-        id: "lower_engine_align",
-        name: "Align Engine Output",
-        room: "LowerEngine",
-        x: 6,
-        y: 28
-    },
-
-    {
-        id: "lower_engine_fuel",
-        name: "Fuel Engines",
-        room: "LowerEngine",
-        x: 8,
-        y: 30
-    },
-
-    {
-        id: "upper_engine_align",
-        name: "Align Engine Output",
-        room: "UpperEngine",
-        x: 6,
-        y: 6
-    },
-
-    {
-        id: "upper_engine_fuel",
-        name: "Fuel Engines",
-        room: "UpperEngine",
-        x: 8,
-        y: 8
-    },
-
-    {
-        id: "security_power",
-        name: "Accept Diverted Power",
-        room: "Security",
-        x: 13,
-        y: 13
-    },
-
-    {
-        id: "security_wires",
-        name: "Fix Wiring",
-        room: "Security",
-        x: 15,
-        y: 14
-    },
-
-    {
-        id: "reactor_start",
         name: "Start Reactor",
         room: "Reactor",
-        x: 5,
-        y: 16
+        node: "reactor"
     },
-
     {
-        id: "reactor_manifolds",
-        name: "Unlock Manifolds",
-        room: "Reactor",
-        x: 8,
-        y: 18
+        name: "Swipe Card",
+        room: "Admin",
+        node: "admin"
     },
-
     {
-        id: "medbay_scan",
-        name: "Submit Scan",
-        room: "MedBay",
-        x: 19,
-        y: 10
+        name: "Prime Shields",
+        room: "Shields",
+        node: "shields"
     },
-
     {
-        id: "medbay_sample",
-        name: "Inspect Sample",
-        room: "MedBay",
-        x: 17,
-        y: 9
+        name: "Chart Course",
+        room: "Navigation",
+        node: "navigation"
     }
 ];
 
-// ============================================================
-// GAME STATE
-// ============================================================
-
 let game = null;
-let gameLoop = null;
-
-// ============================================================
-// HELPERS
-// ============================================================
+let loop = null;
 
 function random(array) {
-    return array[
-        Math.floor(Math.random() * array.length)
-    ];
+    return array[Math.floor(Math.random() * array.length)];
 }
 
-function randomFloat(min, max) {
-    return min + Math.random() * (max - min);
+function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function distance(a, b) {
-    return Math.hypot(
-        a.x - b.x,
-        a.y - b.y
-    );
+    return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function clamp(value, min, max) {
-    return Math.max(
-        min,
-        Math.min(max, value)
-    );
+function clone(value) {
+    return JSON.parse(JSON.stringify(value));
 }
 
-function shuffle(array) {
-    return [...array].sort(
-        () => Math.random() - 0.5
-    );
-}
+function addEvent(text) {
+    if (!game) return;
 
-function getRoomAt(x, y) {
-
-    for (const room of Object.values(rooms)) {
-
-        if (
-            x >= room.x &&
-            x <= room.x + room.w &&
-            y >= room.y &&
-            y <= room.y + room.h
-        ) {
-            return room.name;
-        }
-    }
-
-    return "Hallway";
-}
-
-// ============================================================
-// COLLISION
-// ============================================================
-
-function pointWalkable(x, y, radius = 0.22) {
-
-    if (
-        x < 0 ||
-        y < 0 ||
-        x > WORLD.width ||
-        y > WORLD.height
-    ) {
-        return false;
-    }
-
-    const testPoints = [
-        [x, y],
-        [x + radius, y],
-        [x - radius, y],
-        [x, y + radius],
-        [x, y - radius],
-        [x + radius, y + radius],
-        [x - radius, y - radius],
-        [x + radius, y - radius],
-        [x - radius, y + radius]
-    ];
-
-    return testPoints.every(([px, py]) => {
-
-        return walkableRects.some(rect => {
-
-            return (
-                px >= rect.x &&
-                px <= rect.x + rect.w &&
-                py >= rect.y &&
-                py <= rect.y + rect.h
-            );
-        });
-    });
-}
-
-function movePlayer(player, dx, dy) {
-
-    const nextX = player.x + dx;
-    const nextY = player.y + dy;
-
-    // Full movement
-    if (pointWalkable(nextX, nextY)) {
-
-        player.x = nextX;
-        player.y = nextY;
-
-        return;
-    }
-
-    // Slide horizontally
-    if (pointWalkable(nextX, player.y)) {
-        player.x = nextX;
-    }
-
-    // Slide vertically
-    if (pointWalkable(player.x, nextY)) {
-        player.y = nextY;
-    }
-}
-
-// ============================================================
-// SIMPLE PATHFINDING
-// ============================================================
-
-function nearestWalkablePoint(x, y) {
-
-    if (pointWalkable(x, y)) {
-        return { x, y };
-    }
-
-    for (let radius = 0.25; radius <= 5; radius += 0.25) {
-
-        const attempts = 24;
-
-        for (let i = 0; i < attempts; i++) {
-
-            const angle =
-                Math.random() * Math.PI * 2;
-
-            const px =
-                x + Math.cos(angle) * radius;
-
-            const py =
-                y + Math.sin(angle) * radius;
-
-            if (pointWalkable(px, py)) {
-                return {
-                    x: px,
-                    y: py
-                };
-            }
-        }
-    }
-
-    return {
-        x,
-        y
-    };
-}
-
-function buildPath(startX, startY, targetX, targetY) {
-
-    const start = nearestWalkablePoint(
-        startX,
-        startY
-    );
-
-    const target = nearestWalkablePoint(
-        targetX,
-        targetY
-    );
-
-    const step = 0.5;
-
-    const startNode = {
-        x: Math.round(start.x / step),
-        y: Math.round(start.y / step)
-    };
-
-    const targetNode = {
-        x: Math.round(target.x / step),
-        y: Math.round(target.y / step)
-    };
-
-    const key = (x, y) => `${x},${y}`;
-
-    const open = [startNode];
-
-    const cameFrom = new Map();
-
-    const gScore = new Map();
-
-    const fScore = new Map();
-
-    gScore.set(
-        key(startNode.x, startNode.y),
-        0
-    );
-
-    fScore.set(
-        key(startNode.x, startNode.y),
-        heuristic(
-            startNode,
-            targetNode
-        )
-    );
-
-    const maxIterations = 5000;
-
-    let iterations = 0;
-
-    while (
-        open.length &&
-        iterations < maxIterations
-    ) {
-
-        iterations++;
-
-        let bestIndex = 0;
-
-        for (let i = 1; i < open.length; i++) {
-
-            const a =
-                fScore.get(
-                    key(
-                        open[i].x,
-                        open[i].y
-                    )
-                ) ?? Infinity;
-
-            const b =
-                fScore.get(
-                    key(
-                        open[bestIndex].x,
-                        open[bestIndex].y
-                    )
-                ) ?? Infinity;
-
-            if (a < b) {
-                bestIndex = i;
-            }
-        }
-
-        const current =
-            open.splice(bestIndex, 1)[0];
-
-        if (
-            current.x === targetNode.x &&
-            current.y === targetNode.y
-        ) {
-
-            return reconstructPath(
-                cameFrom,
-                current,
-                step
-            );
-        }
-
-        const neighbors = [
-            [1, 0],
-            [-1, 0],
-            [0, 1],
-            [0, -1],
-            [1, 1],
-            [-1, -1],
-            [1, -1],
-            [-1, 1]
-        ];
-
-        for (const [dx, dy] of neighbors) {
-
-            const nx = current.x + dx;
-            const ny = current.y + dy;
-
-            const wx = nx * step;
-            const wy = ny * step;
-
-            if (!pointWalkable(wx, wy)) {
-                continue;
-            }
-
-            // Prevent diagonal corner cutting.
-            if (
-                dx !== 0 &&
-                dy !== 0 &&
-                (
-                    !pointWalkable(
-                        current.x * step + dx * step,
-                        current.y * step
-                    ) ||
-                    !pointWalkable(
-                        current.x * step,
-                        current.y * step + dy * step
-                    )
-                )
-            ) {
-                continue;
-            }
-
-            const currentKey =
-                key(current.x, current.y);
-
-            const neighborKey =
-                key(nx, ny);
-
-            const currentG =
-                gScore.get(currentKey) ?? Infinity;
-
-            const movementCost =
-                dx !== 0 && dy !== 0
-                    ? 1.414
-                    : 1;
-
-            const tentative =
-                currentG + movementCost;
-
-            if (
-                tentative <
-                (gScore.get(neighborKey) ?? Infinity)
-            ) {
-
-                cameFrom.set(
-                    neighborKey,
-                    currentKey
-                );
-
-                gScore.set(
-                    neighborKey,
-                    tentative
-                );
-
-                fScore.set(
-                    neighborKey,
-                    tentative +
-                    heuristic(
-                        {
-                            x: nx,
-                            y: ny
-                        },
-                        targetNode
-                    )
-                );
-
-                if (
-                    !open.some(
-                        node =>
-                            node.x === nx &&
-                            node.y === ny
-                    )
-                ) {
-                    open.push({
-                        x: nx,
-                        y: ny
-                    });
-                }
-            }
-        }
-    }
-
-    return [
-        {
-            x: target.x,
-            y: target.y
-        }
-    ];
-}
-
-function heuristic(a, b) {
-
-    return Math.hypot(
-        a.x - b.x,
-        a.y - b.y
-    );
-}
-
-function reconstructPath(
-    cameFrom,
-    current,
-    step
-) {
-
-    const path = [];
-
-    let currentKey =
-        `${current.x},${current.y}`;
-
-    while (currentKey) {
-
-        const [x, y] =
-            currentKey
-                .split(",")
-                .map(Number);
-
-        path.unshift({
-            x: x * step,
-            y: y * step
-        });
-
-        currentKey =
-            cameFrom.get(currentKey);
-    }
-
-    return path;
-}
-
-// ============================================================
-// TARGETING
-// ============================================================
-
-function setTarget(player, x, y) {
-
-    const target =
-        nearestWalkablePoint(x, y);
-
-    player.target = {
-        x: target.x,
-        y: target.y
-    };
-
-    player.path =
-        buildPath(
-            player.x,
-            player.y,
-            target.x,
-            target.y
-        );
-
-    player.pathIndex = 0;
-}
-
-function setTargetRoom(player, roomName) {
-
-    const room = rooms[roomName];
-
-    if (!room) {
-        return;
-    }
-
-    const x =
-        room.x +
-        randomFloat(1, room.w - 1);
-
-    const y =
-        room.y +
-        randomFloat(1, room.h - 1);
-
-    setTarget(
-        player,
-        x,
-        y
-    );
-}
-
-// ============================================================
-// CHAT
-// ============================================================
-
-function say(player, text) {
-
-    if (!text) {
-        return;
-    }
-
-    game.chat.push({
+    game.events.push({
         id: crypto.randomUUID(),
-        playerId: player.id,
-        name: player.name,
-        color: player.color,
         text,
         time: Date.now()
     });
 
-    if (game.chat.length > 80) {
-        game.chat.shift();
+    if (game.events.length > 100) {
+        game.events.shift();
     }
 }
 
-function randomAlivePlayer(excludeId) {
+/*
+    Find a route through the navigation graph.
+*/
 
-    const alive =
-        game.players.filter(
-            p =>
-                p.alive &&
-                p.id !== excludeId
-        );
-
-    return random(alive);
-}
-
-// ============================================================
-// AI PERSONALITY
-// ============================================================
-
-function personalitySpeech(player) {
-
-    switch (player.personality) {
-
-        case "paranoid":
-            return [
-                "I don't trust anyone.",
-                "Someone is acting weird.",
-                "Why is everyone splitting up?",
-                "I think someone is following me."
-            ];
-
-        case "calm":
-            return [
-                "Let's just finish tasks.",
-                "Nothing suspicious so far.",
-                "We should look at the evidence.",
-                "Let's not rush the vote."
-            ];
-
-        case "aggressive":
-            return [
-                "WHO WAS THERE?",
-                "That looks suspicious.",
-                "I'm voting someone.",
-                "Stop wasting time."
-            ];
-
-        case "logical":
-            return [
-                "Let's reconstruct the timeline.",
-                "Where was everyone?",
-                "We need actual evidence.",
-                "Who could have reached the body?"
-            ];
-
-        case "chaotic":
-            return [
-                "LOL WHAT JUST HAPPENED",
-                "I HAVE NO IDEA",
-                "EVERYONE SUS",
-                "this ship is doomed"
-            ];
-
-        case "friendly":
-            return [
-                "Let's stick together!",
-                "I was doing tasks.",
-                "Anyone want to group up?",
-                "We can figure this out."
-            ];
-
-        case "quiet":
-            return [
-                "I was in a task.",
-                "Nothing happened.",
-                "I don't know.",
-                "I was alone."
-            ];
-
-        case "suspicious":
-            return [
-                "I saw someone near there.",
-                "That timing is suspicious.",
-                "I have a bad feeling about this.",
-                "We should watch them."
-            ];
-
-        case "confident":
-            return [
-                "I know where I was.",
-                "My route makes sense.",
-                "I'm fairly sure who did it.",
-                "Trust me on this."
-            ];
-
-        case "confused":
-            return [
-                "Wait, where was I?",
-                "I literally just got here.",
-                "What happened?",
-                "I don't understand."
-            ];
-
-        case "sarcastic":
-            return [
-                "Great. Another dead body.",
-                "Yeah, that's totally normal.",
-                "Very convincing.",
-                "Amazing detective work."
-            ];
-
-        case "curious":
-            return [
-                "Who found the body?",
-                "Where exactly was it?",
-                "What were you doing?",
-                "Who was nearby?"
-            ];
-
-        case "cowardly":
-            return [
-                "I was nowhere near that.",
-                "I'm staying with people.",
-                "I don't want to die.",
-                "Someone please protect me."
-            ];
-
-        case "brave":
-            return [
-                "I'll check the area.",
-                "I saw someone suspicious.",
-                "We need to act.",
-                "I'll go with someone."
-            ];
-
-        case "dramatic":
-            return [
-                "WE ARE ALL GOING TO DIE.",
-                "THE IMPOSTOR IS AMONG US.",
-                "THIS IS A DISASTER.",
-                "I KNEW THIS WOULD HAPPEN."
-            ];
-
-        default:
-            return [
-                "I was doing tasks."
-            ];
-    }
-}
-
-// ============================================================
-// SUSPICION
-// ============================================================
-
-function addSuspicion(observer, targetId, amount) {
-
-    if (
-        !observer.suspicion ||
-        !observer.suspicion[targetId]
-    ) {
-        return;
+function findPath(start, end) {
+    if (!GRAPH[start] || !GRAPH[end]) {
+        return [start, end];
     }
 
-    observer.suspicion[targetId] =
-        clamp(
-            observer.suspicion[targetId] + amount,
-            0,
-            100
-        );
-}
+    const queue = [[start]];
+    const visited = new Set([start]);
 
-function updateSuspicionFromSight(observer) {
+    while (queue.length) {
+        const path = queue.shift();
+        const current = path[path.length - 1];
 
-    if (!observer.alive) {
-        return;
-    }
-
-    for (const other of game.players) {
-
-        if (
-            !other.alive ||
-            other.id === observer.id
-        ) {
-            continue;
+        if (current === end) {
+            return path;
         }
 
-        const d =
-            distance(
-                observer,
-                other
-            );
-
-        if (d < 2.5) {
-
-            if (
-                other.lastRoom &&
-                observer.lastRoom &&
-                other.lastRoom !== observer.lastRoom
-            ) {
-                addSuspicion(
-                    observer,
-                    other.id,
-                    0.05
-                );
+        for (const next of GRAPH[current]) {
+            if (!visited.has(next)) {
+                visited.add(next);
+                queue.push([...path, next]);
             }
         }
     }
+
+    return [start, end];
 }
 
-// ============================================================
-// TASKS
-// ============================================================
+function setRoute(player, destination) {
+    const path = findPath(player.node || "cafeteria", destination);
 
-function assignTasks(player) {
+    player.route = path;
+    player.routeIndex = 1;
+    player.targetNode = destination;
 
-    const shuffled =
-        shuffle(taskDefinitions);
+    if (path.length > 1) {
+        const point = NODES[path[1]];
 
-    player.tasks =
-        shuffled
-            .slice(0, 3)
-            .map(task => ({
-                id: task.id,
-                name: task.name,
-                room: task.room,
-                x: task.x,
-                y: task.y,
-                completed: false
-            }));
+        player.targetX = point[0];
+        player.targetY = point[1];
+    }
 }
 
-function startTask(player, task) {
+function movePlayer(player, dt) {
+    if (!player.alive) return;
 
-    player.currentTask = task;
-
-    player.state = "doing_task";
-
-    player.taskStartedAt = Date.now();
-
-    player.action =
-        `Doing ${task.name}`;
-}
-
-function finishTask(player) {
-
-    if (!player.currentTask) {
+    if (player.targetX === null || player.targetY === null) {
         return;
     }
 
-    player.currentTask.completed = true;
+    const dx = player.targetX - player.x;
+    const dy = player.targetY - player.y;
+    const length = Math.hypot(dx, dy);
 
-    player.tasksCompleted++;
+    if (length < 0.05) {
+        player.x = player.targetX;
+        player.y = player.targetY;
 
-    player.currentTask = null;
+        player.node = player.route[player.routeIndex];
 
-    player.taskStartedAt = null;
+        if (player.routeIndex < player.route.length - 1) {
+            player.routeIndex++;
 
-    if (
-        player.tasksCompleted >=
-        player.tasksTotal
-    ) {
+            const nextNode = player.route[player.routeIndex];
+            const point = NODES[nextNode];
 
-        player.action =
-            "Finished all tasks";
+            player.targetX = point[0];
+            player.targetY = point[1];
 
-    } else {
-
-        player.action =
-            "Looking for a task";
-    }
-}
-
-// ============================================================
-// IMPOSTOR
-// ============================================================
-
-function canKill(impostor) {
-
-    return (
-        impostor.alive &&
-        impostor.role === "impostor" &&
-        impostor.killCooldown <= 0 &&
-        game.phase === "playing"
-    );
-}
-
-function findKillTarget(impostor) {
-
-    const candidates =
-        game.players.filter(
-            p =>
-                p.alive &&
-                p.id !== impostor.id &&
-                distance(impostor, p) <=
-                    KILL_DISTANCE
-        );
-
-    if (!candidates.length) {
-        return null;
-    }
-
-    // Prefer players with lower suspicion
-    // toward this impostor.
-    candidates.sort(
-        (a, b) => {
-
-            const aSuspicion =
-                a.suspicion?.[impostor.id] ?? 0;
-
-            const bSuspicion =
-                b.suspicion?.[impostor.id] ?? 0;
-
-            return aSuspicion - bSuspicion;
+            return;
         }
+
+        player.targetX = null;
+        player.targetY = null;
+
+        onArrive(player);
+
+        return;
+    }
+
+    const amount = Math.min(
+        PLAYER_SPEED * dt,
+        length
     );
 
-    return candidates[0];
+    player.x += (dx / length) * amount;
+    player.y += (dy / length) * amount;
 }
 
-function kill(impostor, victim) {
+function onArrive(player) {
+    if (!game || game.phase !== "playing") return;
 
-    victim.alive = false;
+    if (player.action === "task") {
+        player.taskStartedAt = Date.now();
+        player.action = "Doing " + player.currentTask.name;
+        return;
+    }
 
-    victim.state = "dead";
+    if (player.action === "kill") {
+        attemptKill(player);
+        return;
+    }
 
-    victim.action = "Dead";
+    if (player.action === "body") {
+        attemptReport(player);
+        return;
+    }
 
-    victim.target = null;
+    chooseAction(player);
+}
 
-    victim.path = [];
+function createPlayer(name, personality, color, index) {
+    const angle =
+        (Math.PI * 2 * index) / 10;
 
-    victim.currentTask = null;
+    const radius = 3;
 
-    victim.deathTime = Date.now();
+    const x =
+        30 + Math.cos(angle) * radius;
 
-    game.bodies.push({
+    const y =
+        19 + Math.sin(angle) * radius;
+
+    return {
         id: crypto.randomUUID(),
-        victimId: victim.id,
-        x: victim.x,
-        y: victim.y,
-        room: getRoomAt(
-            victim.x,
-            victim.y
-        )
-    });
 
-    impostor.killCooldown =
-        KILL_COOLDOWN;
+        name,
+        personality,
+        color,
 
-    impostor.action =
-        "Killed someone";
+        role: "crewmate",
 
-    game.events.push({
-        type: "kill",
-        text: `${victim.name} was killed.`
-    });
+        alive: true,
 
-    // Nearby witnesses gain suspicion.
-    for (const observer of game.players) {
+        x,
+        y,
 
-        if (
-            !observer.alive ||
-            observer.id === victim.id ||
-            observer.id === impostor.id
-        ) {
-            continue;
-        }
+        node: "cafeteria",
 
-        const d =
-            distance(
-                observer,
-                victim
-            );
+        targetX: null,
+        targetY: null,
 
-        if (d < 4) {
+        route: [],
+        routeIndex: 0,
+        targetNode: null,
 
-            addSuspicion(
-                observer,
-                impostor.id,
-                20
-            );
+        room: "Cafeteria",
 
-            say(
-                observer,
-                `I saw ${impostor.name} near ${victim.name}.`
-            );
-        }
-    }
-}
+        currentTask: null,
+        tasksCompleted: 0,
+        tasksTotal: 3,
+        taskStartedAt: 0,
 
-// ============================================================
-// REPORT
-// ============================================================
+        action: "Standing around",
 
-function findReportableBody(player) {
+        killCooldown: 0,
 
-    let closest = null;
-    let closestDistance = Infinity;
+        emergencyUses: 1,
 
-    for (const body of game.bodies) {
+        lastMeeting: 0,
 
-        const d =
-            Math.hypot(
-                player.x - body.x,
-                player.y - body.y
-            );
+        suspicion: {},
 
-        if (
-            d < 1.6 &&
-            d < closestDistance
-        ) {
-            closest = body;
-            closestDistance = d;
-        }
-    }
+        memory: [],
 
-    return closest;
-}
+        vote: null,
 
-function reportBody(player, body) {
-
-    if (
-        game.phase !== "playing" ||
-        !body
-    ) {
-        return;
-    }
-
-    const victim =
-        game.players.find(
-            p => p.id === body.victimId
-        );
-
-    game.lastMeeting = {
-        type: "report",
-        callerId: player.id,
-        callerName: player.name,
-        victimId: body.victimId,
-        victimName: victim?.name || "Unknown"
+        chat: ""
     };
-
-    say(
-        player,
-        `I found ${victim?.name || "a body"}!`
-    );
-
-    startMeeting();
 }
-
-// ============================================================
-// EMERGENCY
-// ============================================================
-
-function canEmergency(player) {
-
-    return (
-        game.phase === "playing" &&
-        player.alive &&
-        !game.emergencyUsed[player.id] &&
-        game.emergencyCooldown <= 0
-    );
-}
-
-function callEmergency(player) {
-
-    if (!canEmergency(player)) {
-        return false;
-    }
-
-    game.emergencyUsed[player.id] = true;
-
-    game.emergencyCooldown =
-        EMERGENCY_COOLDOWN;
-
-    game.lastMeeting = {
-        type: "emergency",
-        callerId: player.id,
-        callerName: player.name
-    };
-
-    say(
-        player,
-        "Emergency meeting!"
-    );
-
-    startMeeting();
-
-    return true;
-}
-
-// ============================================================
-// MEETINGS
-// ============================================================
-
-function startMeeting() {
-
-    if (game.phase !== "playing") {
-        return;
-    }
-
-    game.phase = "discussion";
-
-    game.meetingTimer =
-        DISCUSSION_TIME;
-
-    game.votes = {};
-
-    // Everyone goes back to Cafeteria.
-    for (const player of game.players) {
-
-        if (!player.alive) {
-            continue;
-        }
-
-        const angle =
-            Math.random() * Math.PI * 2;
-
-        const radius =
-            randomFloat(1.7, 3.0);
-
-        player.x =
-            24 +
-            Math.cos(angle) * radius;
-
-        player.y =
-            18.5 +
-            Math.sin(angle) * radius;
-
-        player.state = "meeting";
-
-        player.target = null;
-        player.path = [];
-
-        player.currentTask = null;
-
-        player.action =
-            "Discussing";
-    }
-
-    game.events.push({
-        type: "meeting",
-        text: "Emergency meeting called."
-    });
-
-    // Dead bodies disappear during meetings.
-    game.bodies = [];
-
-    scheduleMeetingChat();
-}
-
-function scheduleMeetingChat() {
-
-    const alive =
-        game.players.filter(
-            p => p.alive
-        );
-
-    for (const player of alive) {
-
-        const delay =
-            1500 +
-            Math.random() * 8000;
-
-        setTimeout(() => {
-
-            if (
-                !game ||
-                game.phase !== "discussion" ||
-                !player.alive
-            ) {
-                return;
-            }
-
-            let message;
-
-            const suspicious =
-                getMostSuspicious(
-                    player
-                );
-
-            if (
-                suspicious &&
-                Math.random() < 0.65
-            ) {
-
-                message =
-                    `${suspicious.name} seems suspicious.`;
-            } else {
-
-                message =
-                    random(
-                        personalitySpeech(player)
-                    );
-            }
-
-            say(
-                player,
-                message
-            );
-
-        }, delay);
-    }
-}
-
-function getMostSuspicious(player) {
-
-    let best = null;
-    let bestValue = 0;
-
-    for (const other of game.players) {
-
-        if (
-            !other.alive ||
-            other.id === player.id
-        ) {
-            continue;
-        }
-
-        const value =
-            player.suspicion?.[other.id] ?? 0;
-
-        if (value > bestValue) {
-
-            bestValue = value;
-            best = other;
-        }
-    }
-
-    return best;
-}
-
-function startVoting() {
-
-    if (game.phase !== "discussion") {
-        return;
-    }
-
-    game.phase = "voting";
-
-    game.meetingTimer =
-        VOTING_TIME;
-
-    game.votes = {};
-
-    for (const player of game.players) {
-
-        if (!player.alive) {
-            continue;
-        }
-
-        setTimeout(() => {
-
-            if (
-                game.phase !== "voting" ||
-                !player.alive
-            ) {
-                return;
-            }
-
-            makeAIVote(player);
-
-        }, randomFloat(500, 5000));
-    }
-}
-
-function makeAIVote(player) {
-
-    const candidates =
-        game.players.filter(
-            p =>
-                p.alive &&
-                p.id !== player.id
-        );
-
-    if (!candidates.length) {
-        return;
-    }
-
-    let selected = null;
-    let highest = -Infinity;
-
-    for (const candidate of candidates) {
-
-        let score =
-            player.suspicion?.[candidate.id] ?? 0;
-
-        // Impostors avoid voting their fellow impostor.
-        if (
-            player.role === "impostor" &&
-            candidate.role === "impostor"
-        ) {
-            score -= 100;
-        }
-
-        // Paranoid players vote more aggressively.
-        if (
-            player.personality === "paranoid"
-        ) {
-            score += randomFloat(0, 15);
-        }
-
-        // Logical players rely more heavily on evidence.
-        if (
-            player.personality === "logical"
-        ) {
-            score *= 1.25;
-        }
-
-        // Confused players can randomly vote.
-        if (
-            player.personality === "confused" &&
-            Math.random() < 0.35
-        ) {
-            score =
-                randomFloat(0, 100);
-        }
-
-        if (score > highest) {
-
-            highest = score;
-            selected = candidate;
-        }
-    }
-
-    if (
-        selected &&
-        highest >= 20
-    ) {
-
-        game.votes[player.id] =
-            selected.id;
-
-        say(
-            player,
-            `I vote ${selected.name}.`
-        );
-
-    } else {
-
-        game.votes[player.id] =
-            "skip";
-
-        say(
-            player,
-            "I'm skipping."
-        );
-    }
-}
-
-function finishVoting() {
-
-    if (game.phase !== "voting") {
-        return;
-    }
-
-    const counts = {};
-
-    let skipVotes = 0;
-
-    for (const vote of Object.values(game.votes)) {
-
-        if (vote === "skip") {
-            skipVotes++;
-            continue;
-        }
-
-        counts[vote] =
-            (counts[vote] || 0) + 1;
-    }
-
-    let highest = 0;
-    let winnerId = null;
-    let tie = false;
-
-    for (const [id, count] of Object.entries(counts)) {
-
-        if (count > highest) {
-
-            highest = count;
-            winnerId = id;
-            tie = false;
-
-        } else if (
-            count === highest &&
-            count > 0
-        ) {
-
-            tie = true;
-        }
-    }
-
-    if (
-        !winnerId ||
-        tie ||
-        skipVotes >= highest
-    ) {
-
-        game.events.push({
-            type: "vote",
-            text: "No one was ejected."
-        });
-
-        for (const player of game.players) {
-
-            if (player.alive) {
-                player.action = "No one was ejected";
-            }
-        }
-
-    } else {
-
-        const ejected =
-            game.players.find(
-                p => p.id === winnerId
-            );
-
-        if (ejected) {
-
-            ejected.alive = false;
-
-            ejected.state = "dead";
-
-            ejected.action =
-                "Ejected";
-
-            game.events.push({
-                type: "vote",
-                text: `${ejected.name} was ejected.`
-            });
-
-            say(
-                ejected,
-                ejected.role === "impostor"
-                    ? "..."
-                    : "Wait, what?!"
-            );
-        }
-    }
-
-    checkWinCondition();
-
-    if (game.phase === "voting") {
-
-        game.phase = "playing";
-
-        game.meetingTimer = 0;
-
-        for (const player of game.players) {
-
-            if (!player.alive) {
-                continue;
-            }
-
-            player.state = "moving";
-
-            player.action =
-                "Returning to tasks";
-
-            chooseNextAction(player);
-        }
-    }
-}
-
-// ============================================================
-// AI MOVEMENT / BEHAVIOUR
-// ============================================================
-
-function chooseNextAction(player) {
-
-    if (
-        !player.alive ||
-        game.phase !== "playing"
-    ) {
-        return;
-    }
-
-    player.state = "moving";
-
-    // IMPOSTOR
-    if (player.role === "impostor") {
-
-        const target =
-            findKillTarget(player);
-
-        if (
-            target &&
-            player.killCooldown <= 0 &&
-            Math.random() < 0.55
-        ) {
-
-            player.behaviour =
-                "hunt";
-
-            player.action =
-                `Following ${target.name}`;
-
-            setTarget(
-                player,
-                target.x,
-                target.y
-            );
-
-            return;
-        }
-
-        // Sometimes fake a task.
-        const fakeTask =
-            random(taskDefinitions);
-
-        player.behaviour =
-            "fake_task";
-
-        player.action =
-            `Pretending to do ${fakeTask.name}`;
-
-        setTarget(
-            player,
-            fakeTask.x,
-            fakeTask.y
-        );
-
-        return;
-    }
-
-    // CREWMATE
-    const unfinished =
-        player.tasks.filter(
-            task => !task.completed
-        );
-
-    if (!unfinished.length) {
-
-        player.action =
-            "Wandering";
-
-        const room =
-            random(
-                Object.keys(rooms)
-            );
-
-        setTargetRoom(
-            player,
-            room
-        );
-
-        return;
-    }
-
-    const task =
-        random(unfinished);
-
-    player.behaviour =
-        "task";
-
-    player.action =
-        `Going to ${task.name}`;
-
-    setTarget(
-        player,
-        task.x,
-        task.y
-    );
-}
-
-function updatePlayer(player, deltaSeconds) {
-
-    if (
-        !player.alive ||
-        game.phase !== "playing"
-    ) {
-        return;
-    }
-
-    if (player.killCooldown > 0) {
-
-        player.killCooldown =
-            Math.max(
-                0,
-                player.killCooldown -
-                    deltaSeconds
-            );
-    }
-
-    updateSuspicionFromSight(player);
-
-    // FOLLOWING TARGET
-    if (
-        player.behaviour === "hunt" &&
-        player.target
-    ) {
-
-        const target =
-            game.players.find(
-                p =>
-                    p.alive &&
-                    p.id !== player.id &&
-                    distance(player, p) <
-                        15
-            );
-
-        if (target) {
-
-            setTarget(
-                player,
-                target.x,
-                target.y
-            );
-        }
-    }
-
-    // Move along path.
-    if (
-        player.path &&
-        player.pathIndex <
-            player.path.length
-    ) {
-
-        const next =
-            player.path[player.pathIndex];
-
-        const dx =
-            next.x - player.x;
-
-        const dy =
-            next.y - player.y;
-
-        const d =
-            Math.hypot(dx, dy);
-
-        if (d < 0.08) {
-
-            player.pathIndex++;
-
-        } else {
-
-            const amount =
-                Math.min(
-                    PLAYER_SPEED *
-                        deltaSeconds,
-                    d
-                );
-
-            movePlayer(
-                player,
-                (dx / d) * amount,
-                (dy / d) * amount
-            );
-        }
-    }
-
-    player.room =
-        getRoomAt(
-            player.x,
-            player.y
-        );
-
-    if (
-        player.room !== player.lastRoom
-    ) {
-
-        player.lastRoom =
-            player.room;
-    }
-
-    // Arrived at target.
-    if (
-        player.target &&
-        distance(
-            player,
-            player.target
-        ) < 0.25
-    ) {
-
-        handleArrival(player);
-    }
-
-    // Kill attempt.
-    if (
-        player.role === "impostor" &&
-        player.behaviour === "hunt"
-    ) {
-
-        const victim =
-            findKillTarget(player);
-
-        if (victim) {
-            kill(
-                player,
-                victim
-            );
-
-            chooseNextAction(player);
-
-            return;
-        }
-    }
-
-    // Report body.
-    const body =
-        findReportableBody(player);
-
-    if (
-        body &&
-        Math.random() < 0.004
-    ) {
-
-        reportBody(
-            player,
-            body
-        );
-
-        return;
-    }
-
-    // Random emergency call.
-    if (
-        player.room === "Cafeteria" &&
-        Math.random() < 0.0008
-    ) {
-
-        callEmergency(player);
-    }
-}
-
-function handleArrival(player) {
-
-    player.target = null;
-    player.path = [];
-    player.pathIndex = 0;
-
-    if (
-        player.behaviour === "task" &&
-        player.role === "crewmate"
-    ) {
-
-        const task =
-            player.tasks.find(
-                t =>
-                    !t.completed &&
-                    distance(
-                        player,
-                        t
-                    ) < 1.5
-            );
-
-        if (task) {
-
-            startTask(
-                player,
-                task
-            );
-
-            return;
-        }
-    }
-
-    if (
-        player.behaviour === "fake_task"
-    ) {
-
-        player.action =
-            "Pretending to do a task";
-
-        player.fakeTaskUntil =
-            Date.now() +
-            randomFloat(
-                3000,
-                8000
-            );
-
-        return;
-    }
-
-    chooseNextAction(player);
-}
-
-function updateTasks(player) {
-
-    if (
-        player.state !== "doing_task" ||
-        !player.currentTask
-    ) {
-        return;
-    }
-
-    if (
-        Date.now() -
-        player.taskStartedAt >=
-        TASK_TIME * 1000
-    ) {
-
-        finishTask(player);
-
-        chooseNextAction(player);
-    }
-}
-
-// ============================================================
-// WIN CONDITIONS
-// ============================================================
-
-function checkWinCondition() {
-
-    if (!game) {
-        return;
-    }
-
-    const aliveCrew =
-        game.players.filter(
-            p =>
-                p.alive &&
-                p.role === "crewmate"
-        ).length;
-
-    const aliveImpostors =
-        game.players.filter(
-            p =>
-                p.alive &&
-                p.role === "impostor"
-        ).length;
-
-    const unfinishedTasks =
-        game.players.reduce(
-            (sum, p) =>
-                sum +
-                p.tasks.filter(
-                    t => !t.completed
-                ).length,
-            0
-        );
-
-    if (aliveImpostors <= 0) {
-
-        endGame(
-            "crewmates",
-            "All impostors were ejected."
-        );
-
-        return;
-    }
-
-    if (aliveImpostors >= aliveCrew) {
-
-        endGame(
-            "impostors",
-            "The impostors have taken control."
-        );
-
-        return;
-    }
-
-    if (unfinishedTasks === 0) {
-
-        endGame(
-            "crewmates",
-            "All tasks were completed."
-        );
-    }
-}
-
-function endGame(winner, reason) {
-
-    if (
-        game.phase === "ended"
-    ) {
-        return;
-    }
-
-    game.phase = "ended";
-
-    game.winner = winner;
-
-    game.winReason = reason;
-
-    game.events.push({
-        type: "game_end",
-        text: reason
-    });
-
-    for (const player of game.players) {
-
-        player.target = null;
-        player.path = [];
-
-        if (winner === "crewmates") {
-
-            player.action =
-                player.role === "crewmate"
-                    ? "Crewmates win!"
-                    : "Impostors lose!";
-
-        } else {
-
-            player.action =
-                player.role === "impostor"
-                    ? "Impostors win!"
-                    : "Crewmates lose!";
-        }
-    }
-
-    if (gameLoop) {
-
-        clearInterval(gameLoop);
-
-        gameLoop = null;
-    }
-}
-
-// ============================================================
-// GAME CREATION
-// ============================================================
 
 function createGame() {
-
-    if (gameLoop) {
-
-        clearInterval(gameLoop);
-
-        gameLoop = null;
+    if (loop) {
+        clearInterval(loop);
+        loop = null;
     }
 
-    const selectedNames =
-        shuffle(names)
-            .slice(0, PLAYER_COUNT);
+    const shuffledNames = [...NAMES]
+        .sort(() => Math.random() - 0.5);
 
-    const selectedColors =
-        shuffle(colors);
-
-    const selectedPersonalities =
-        shuffle(personalities);
-
-    const impostorIndexes =
-        shuffle(
-            [...Array(PLAYER_COUNT).keys()]
-        ).slice(
-            0,
-            IMPOSTOR_COUNT
-        );
+    const shuffledPersonalities = [...PERSONALITIES]
+        .sort(() => Math.random() - 0.5);
 
     const players = [];
 
-    for (let i = 0; i < PLAYER_COUNT; i++) {
-
-        const id =
-            crypto.randomUUID();
-
-        const isImpostor =
-            impostorIndexes.includes(i);
-
-        const angle =
-            (Math.PI * 2 * i) /
-            PLAYER_COUNT;
-
-        // Spawn around the central cafeteria table.
-        const radius =
-            randomFloat(2.1, 3.0);
-
-        const x =
-            24 +
-            Math.cos(angle) * radius;
-
-        const y =
-            18.5 +
-            Math.sin(angle) * radius;
-
-        const player = {
-
-            id,
-
-            name: selectedNames[i],
-
-            color:
-                selectedColors[
-                    i % selectedColors.length
-                ],
-
-            personality:
-                selectedPersonalities[
-                    i % selectedPersonalities.length
-                ],
-
-            role:
-                isImpostor
-                    ? "impostor"
-                    : "crewmate",
-
-            alive: true,
-
-            x,
-            y,
-
-            room: "Cafeteria",
-
-            lastRoom: "Cafeteria",
-
-            state: "moving",
-
-            behaviour: null,
-
-            target: null,
-
-            path: [],
-
-            pathIndex: 0,
-
-            action:
-                isImpostor
-                    ? "Pretending to be innocent"
-                    : "Looking for a task",
-
-            tasks: [],
-
-            tasksCompleted: 0,
-
-            tasksTotal: 3,
-
-            currentTask: null,
-
-            taskStartedAt: null,
-
-            fakeTaskUntil: null,
-
-            killCooldown:
-                isImpostor
-                    ? randomFloat(5, 12)
-                    : 0,
-
-            suspicion: {},
-
-            deathTime: null
-        };
-
-        players.push(player);
+    for (let i = 0; i < 10; i++) {
+        players.push(
+            createPlayer(
+                shuffledNames[i],
+                shuffledPersonalities[i],
+                COLORS[i],
+                i
+            )
+        );
     }
 
-    // Everyone gets a suspicion score for everyone else.
-    for (const player of players) {
+    const impostorCount = Math.random() < 0.2 ? 2 : 1;
 
+    const shuffledPlayers = [...players]
+        .sort(() => Math.random() - 0.5);
+
+    for (let i = 0; i < impostorCount; i++) {
+        shuffledPlayers[i].role = "impostor";
+    }
+
+    for (const player of players) {
         for (const other of players) {
-
             if (player.id !== other.id) {
-
-                player.suspicion[other.id] =
-                    randomFloat(0, 8);
+                player.suspicion[other.id] = 0;
             }
-        }
-    }
-
-    // Give crew tasks.
-    for (const player of players) {
-
-        if (player.role === "crewmate") {
-            assignTasks(player);
-        } else {
-
-            // Impostors receive fake tasks for believable movement.
-            player.tasks =
-                shuffle(taskDefinitions)
-                    .slice(0, 3)
-                    .map(task => ({
-                        id: task.id,
-                        name: task.name,
-                        room: task.room,
-                        x: task.x,
-                        y: task.y,
-                        completed: false
-                    }));
         }
     }
 
     game = {
-
         id: crypto.randomUUID(),
 
         phase: "playing",
@@ -2595,7 +585,7 @@ function createGame() {
 
         winner: null,
 
-        winReason: null,
+        meeting: null,
 
         players,
 
@@ -2603,63 +593,26 @@ function createGame() {
 
         events: [],
 
-        chat: [],
-
-        votes: {},
-
-        meetingTimer: 0,
-
-        emergencyCooldown: 0,
-
-        emergencyUsed: {},
-
-        lastMeeting: null,
-
-        startedAt: Date.now()
+        totalTasks: players.length * 3
     };
 
-    game.events.push({
-        type: "start",
-        text: "The game has started."
-    });
+    addEvent("The game has started.");
+
+    addEvent(
+        "Everyone is gathering around the Cafeteria table."
+    );
 
     for (const player of players) {
-
-        chooseNextAction(player);
+        chooseAction(player);
     }
 
-    // Force everyone to initially gather around the table.
-    for (const player of players) {
-
-        const angle =
-            Math.random() * Math.PI * 2;
-
-        const radius =
-            randomFloat(2.0, 2.8);
-
-        player.x =
-            24 +
-            Math.cos(angle) * radius;
-
-        player.y =
-            18.5 +
-            Math.sin(angle) * radius;
-
-        player.room =
-            "Cafeteria";
-
-        player.lastRoom =
-            "Cafeteria";
-    }
-
-    gameLoop =
-        setInterval(
-            updateGame,
-            TICK_MS
-        );
+    loop = setInterval(
+        updateGame,
+        TICK_RATE
+    );
 
     console.log(
-        "New AI Among Us game started."
+        "NEW GAME"
     );
 
     console.log(
@@ -2673,88 +626,721 @@ function createGame() {
     return game;
 }
 
-// ============================================================
-// MAIN LOOP
-// ============================================================
-
-let lastTick = Date.now();
-
-function updateGame() {
-
-    if (!game) {
+function chooseAction(player) {
+    if (!game || game.phase !== "playing") {
         return;
     }
 
-    const now = Date.now();
+    if (!player.alive) return;
 
-    const delta =
-        Math.min(
-            0.25,
-            (now - lastTick) / 1000
+    /*
+        Impostor behavior.
+    */
+
+    if (player.role === "impostor") {
+        const nearbyVictims = game.players.filter(other => {
+            if (!other.alive) return false;
+            if (other.id === player.id) return false;
+            if (other.role === "impostor") return false;
+
+            return distance(player, other) < 12;
+        });
+
+        if (
+            player.killCooldown <= 0 &&
+            nearbyVictims.length > 0 &&
+            Math.random() < 0.55
+        ) {
+            const target = random(nearbyVictims);
+
+            player.action = "kill";
+            player.targetPlayer = target.id;
+
+            setRoute(
+                player,
+                target.node
+            );
+
+            return;
+        }
+
+        if (Math.random() < 0.35) {
+            player.action = "Looking for someone alone";
+
+            setRoute(
+                player,
+                random([
+                    "electrical",
+                    "storage",
+                    "reactor",
+                    "navigation",
+                    "communications"
+                ])
+            );
+
+            return;
+        }
+    }
+
+    /*
+        Crewmate / fake task behavior.
+    */
+
+    if (
+        player.role === "crewmate" &&
+        player.tasksCompleted < player.tasksTotal
+    ) {
+        const task = random(
+            TASKS.filter(t =>
+                !player.completedTaskNames ||
+                !player.completedTaskNames.includes(t.name)
+            )
         );
 
-    lastTick = now;
+        player.currentTask = task;
+        player.action = "task";
 
-    if (game.phase === "playing") {
-
-        game.round++;
-
-        game.emergencyCooldown =
-            Math.max(
-                0,
-                game.emergencyCooldown -
-                    delta
-            );
-
-        for (const player of game.players) {
-
-            updatePlayer(
-                player,
-                delta
-            );
-
-            updateTasks(player);
+        if (!player.completedTaskNames) {
+            player.completedTaskNames = [];
         }
 
-        checkWinCondition();
+        setRoute(
+            player,
+            task.node
+        );
 
-    } else if (
-        game.phase === "discussion" ||
-        game.phase === "voting"
+        return;
+    }
+
+    /*
+        Wander.
+    */
+
+    const destination = random(
+        Object.keys(NODES)
+    );
+
+    player.action = "Walking around";
+
+    setRoute(
+        player,
+        destination
+    );
+}
+
+function completeTask(player) {
+    if (
+        !player.currentTask ||
+        player.tasksCompleted >= player.tasksTotal
     ) {
+        chooseAction(player);
+        return;
+    }
 
-        game.meetingTimer -= delta;
+    if (!player.completedTaskNames) {
+        player.completedTaskNames = [];
+    }
 
+    if (
+        !player.completedTaskNames.includes(
+            player.currentTask.name
+        )
+    ) {
+        player.completedTaskNames.push(
+            player.currentTask.name
+        );
+
+        player.tasksCompleted++;
+
+        addEvent(
+            `${player.name} completed ${player.currentTask.name}.`
+        );
+    }
+
+    player.currentTask = null;
+    player.taskStartedAt = 0;
+
+    chooseAction(player);
+
+    checkWinCondition();
+}
+
+function attemptKill(impostor) {
+    if (
+        !game ||
+        game.phase !== "playing" ||
+        !impostor.alive ||
+        impostor.role !== "impostor" ||
+        impostor.killCooldown > 0
+    ) {
+        chooseAction(impostor);
+        return;
+    }
+
+    const target = game.players.find(
+        p => p.id === impostor.targetPlayer
+    );
+
+    if (
+        !target ||
+        !target.alive ||
+        target.role === "impostor"
+    ) {
+        chooseAction(impostor);
+        return;
+    }
+
+    if (distance(impostor, target) > KILL_RANGE) {
+        chooseAction(impostor);
+        return;
+    }
+
+    target.alive = false;
+
+    target.action = "Dead";
+
+    game.bodies.push({
+        id: crypto.randomUUID(),
+        playerId: target.id,
+        name: target.name,
+        color: target.color,
+        x: target.x,
+        y: target.y,
+        room: target.room,
+        reported: false
+    });
+
+    impostor.killCooldown = KILL_COOLDOWN;
+
+    addEvent(
+        `${target.name} was killed.`
+    );
+
+    /*
+        Nearby AIs can notice the body.
+    */
+
+    for (const player of game.players) {
         if (
-            game.phase === "discussion" &&
-            game.meetingTimer <= 0
+            player.alive &&
+            player.id !== target.id &&
+            distance(player, target) < 7
         ) {
-
-            startVoting();
+            player.suspicion[impostor.id] += 1;
+            player.memory.push(
+                `${target.name} was found dead near ${impostor.name}.`
+            );
         }
+    }
 
-        if (
-            game.phase === "voting" &&
-            game.meetingTimer <= 0
-        ) {
+    chooseAction(impostor);
+}
 
-            finishVoting();
-        }
+function attemptReport(player) {
+    if (!game || game.phase !== "playing") {
+        return;
+    }
+
+    const body = game.bodies.find(
+        body =>
+            !body.reported &&
+            distance(player, body) < 4
+    );
+
+    if (!body) {
+        chooseAction(player);
+        return;
+    }
+
+    body.reported = true;
+
+    startMeeting(
+        player,
+        "body"
+    );
+}
+
+function callEmergency(player) {
+    if (
+        !game ||
+        game.phase !== "playing" ||
+        !player.alive
+    ) {
+        return;
+    }
+
+    if (player.node !== "cafeteria") {
+        return;
+    }
+
+    if (player.emergencyUses <= 0) {
+        return;
+    }
+
+    if (
+        Date.now() - player.lastMeeting <
+        MEETING_COOLDOWN * 1000
+    ) {
+        return;
+    }
+
+    player.emergencyUses--;
+
+    startMeeting(
+        player,
+        "emergency"
+    );
+}
+
+function startMeeting(caller, reason) {
+    if (
+        !game ||
+        game.phase !== "playing"
+    ) {
+        return;
+    }
+
+    game.phase = "meeting";
+
+    game.meeting = {
+        reason,
+        callerId: caller.id,
+        callerName: caller.name,
+        startedAt: Date.now(),
+        discussionEndsAt:
+            Date.now() + MEETING_TIME * 1000,
+        votingEndsAt: null,
+        votes: {},
+        chat: []
+    };
+
+    for (const player of game.players) {
+        if (!player.alive) continue;
+
+        player.vote = null;
+
+        player.chat = generateChat(
+            player,
+            reason
+        );
+
+        game.meeting.chat.push({
+            playerId: player.id,
+            name: player.name,
+            text: player.chat,
+            time: Date.now()
+        });
+    }
+
+    if (reason === "body") {
+        addEvent(
+            `${caller.name} reported a body.`
+        );
+    } else {
+        addEvent(
+            `${caller.name} called an emergency meeting.`
+        );
     }
 }
 
-// ============================================================
-// PUBLIC STATE
-// ============================================================
+function generateChat(player, reason) {
+    const alivePlayers =
+        game.players.filter(p => p.alive);
 
-function publicGameState() {
+    const suspicious = alivePlayers
+        .filter(p => p.id !== player.id)
+        .sort(
+            (a, b) =>
+                (player.suspicion[b.id] || 0) -
+                (player.suspicion[a.id] || 0)
+        );
 
-    if (!game) {
-        return null;
+    const target = suspicious[0];
+
+    if (reason === "body") {
+        if (player.personality === "paranoid") {
+            return "Someone is definitely lying. I saw something weird.";
+        }
+
+        if (player.personality === "logical") {
+            return target
+                ? `${target.name} is acting suspicious.`
+                : "We need to reconstruct everyone's movements.";
+        }
+
+        if (player.personality === "chaotic") {
+            return "BRO WHO JUST GOT KILLED 😭";
+        }
+
+        if (player.personality === "quiet") {
+            return "I didn't see anything.";
+        }
+
+        if (player.personality === "aggressive") {
+            return target
+                ? `I don't trust ${target.name}.`
+                : "Someone here is lying.";
+        }
+
+        return random([
+            "Where was everyone?",
+            "I was doing tasks.",
+            "Did anyone see the killer?",
+            "I saw people near the body.",
+            "Who was nearby?"
+        ]);
     }
 
-    return {
+    return random([
+        "Why was the meeting called?",
+        "Did anyone see something?",
+        "Let's figure this out.",
+        "I was doing my task.",
+        "Anyone acting suspicious?",
+        "I have nothing to report."
+    ]);
+}
 
+function calculateVote(player) {
+    const candidates =
+        game.players.filter(
+            p => p.alive && p.id !== player.id
+        );
+
+    if (!candidates.length) {
+        return "skip";
+    }
+
+    /*
+        Actual decision state:
+        suspicion + personality + memories.
+    */
+
+    let best = null;
+    let bestScore = 0;
+
+    for (const candidate of candidates) {
+        let score =
+            player.suspicion[candidate.id] || 0;
+
+        if (
+            player.personality === "paranoid"
+        ) {
+            score *= 1.4;
+        }
+
+        if (
+            player.personality === "logical"
+        ) {
+            score *= 1.2;
+        }
+
+        if (
+            player.personality === "confused"
+        ) {
+            score *= 0.7;
+        }
+
+        if (
+            player.personality === "cowardly"
+        ) {
+            score *= 0.6;
+        }
+
+        score += Math.random() * 1.5;
+
+        if (score > bestScore) {
+            bestScore = score;
+            best = candidate;
+        }
+    }
+
+    if (
+        best &&
+        bestScore >= 1.5
+    ) {
+        return best.id;
+    }
+
+    return "skip";
+}
+
+function finishVoting() {
+    if (
+        !game ||
+        game.phase !== "meeting"
+    ) {
+        return;
+    }
+
+    const votes = {};
+
+    for (const player of game.players) {
+        if (!player.alive) continue;
+
+        const vote =
+            player.vote || calculateVote(player);
+
+        player.vote = vote;
+
+        votes[vote] =
+            (votes[vote] || 0) + 1;
+    }
+
+    game.meeting.votes = votes;
+
+    let highest = 0;
+    let ejected = null;
+    let tie = false;
+
+    for (const [id, count] of Object.entries(votes)) {
+        if (id === "skip") continue;
+
+        if (count > highest) {
+            highest = count;
+            ejected = id;
+            tie = false;
+        } else if (count === highest) {
+            tie = true;
+        }
+    }
+
+    if (tie || !ejected) {
+        addEvent(
+            "No one was ejected."
+        );
+    } else {
+        const player = game.players.find(
+            p => p.id === ejected
+        );
+
+        if (player) {
+            player.alive = false;
+
+            addEvent(
+                `${player.name} was ejected.`
+            );
+
+            addEvent(
+                player.role === "impostor"
+                    ? `${player.name} was an Impostor.`
+                    : `${player.name} was not an Impostor.`
+            );
+        }
+    }
+
+    game.phase = "playing";
+
+    game.meeting.votingEndsAt = null;
+
+    for (const player of game.players) {
+        player.vote = null;
+        player.lastMeeting = Date.now();
+    }
+
+    game.round++;
+
+    game.bodies =
+        game.bodies.filter(
+            body => !body.reported
+        );
+
+    for (const player of game.players) {
+        if (player.alive) {
+            chooseAction(player);
+        }
+    }
+
+    game.meeting = null;
+
+    checkWinCondition();
+}
+
+function updateMeeting() {
+    if (!game.meeting) return;
+
+    const now = Date.now();
+
+    if (
+        !game.meeting.votingEndsAt &&
+        now >= game.meeting.discussionEndsAt
+    ) {
+        game.meeting.votingEndsAt =
+            now + VOTING_TIME * 1000;
+
+        for (const player of game.players) {
+            if (!player.alive) continue;
+
+            player.vote =
+                calculateVote(player);
+        }
+
+        return;
+    }
+
+    if (
+        game.meeting.votingEndsAt &&
+        now >= game.meeting.votingEndsAt
+    ) {
+        finishVoting();
+    }
+}
+
+function updateGame() {
+    if (!game) return;
+
+    if (game.phase === "meeting") {
+        updateMeeting();
+        return;
+    }
+
+    if (game.phase !== "playing") {
+        return;
+    }
+
+    const dt = TICK_RATE / 1000;
+
+    for (const player of game.players) {
+        if (!player.alive) continue;
+
+        if (player.killCooldown > 0) {
+            player.killCooldown =
+                Math.max(
+                    0,
+                    player.killCooldown - dt
+                );
+        }
+
+        movePlayer(
+            player,
+            dt
+        );
+
+        /*
+            Task completion.
+        */
+
+        if (
+            player.action.startsWith("Doing ") &&
+            player.taskStartedAt > 0
+        ) {
+            if (
+                Date.now() -
+                player.taskStartedAt >=
+                TASK_TIME * 1000
+            ) {
+                completeTask(player);
+            }
+        }
+
+        /*
+            Body detection.
+        */
+
+        if (
+            player.action === "Walking around" ||
+            player.action === "Standing around"
+        ) {
+            const nearbyBody =
+                game.bodies.find(
+                    body =>
+                        !body.reported &&
+                        distance(player, body) < 4
+                );
+
+            if (nearbyBody) {
+                attemptReport(player);
+            }
+        }
+
+        /*
+            Emergency meeting chance.
+        */
+
+        if (
+            player.node === "cafeteria" &&
+            player.emergencyUses > 0 &&
+            Math.random() < 0.0005
+        ) {
+            callEmergency(player);
+        }
+    }
+
+    checkWinCondition();
+}
+
+function checkWinCondition() {
+    if (!game || game.phase === "ended") {
+        return;
+    }
+
+    const aliveImpostors =
+        game.players.filter(
+            p =>
+                p.alive &&
+                p.role === "impostor"
+        );
+
+    const aliveCrew =
+        game.players.filter(
+            p =>
+                p.alive &&
+                p.role === "crewmate"
+        );
+
+    const remainingTasks =
+        game.players.reduce(
+            (total, player) =>
+                total +
+                (player.tasksTotal -
+                    player.tasksCompleted),
+            0
+        );
+
+    if (aliveImpostors.length === 0) {
+        endGame("crewmates");
+        return;
+    }
+
+    if (
+        aliveImpostors.length >=
+        aliveCrew.length
+    ) {
+        endGame("impostors");
+        return;
+    }
+
+    if (remainingTasks <= 0) {
+        endGame("crewmates");
+    }
+}
+
+function endGame(winner) {
+    if (!game) return;
+
+    game.phase = "ended";
+    game.winner = winner;
+
+    if (loop) {
+        clearInterval(loop);
+        loop = null;
+    }
+
+    if (winner === "crewmates") {
+        addEvent(
+            "CREWMATES WIN!"
+        );
+    } else {
+        addEvent(
+            "IMPOSTORS WIN!"
+        );
+    }
+}
+
+function publicGameState() {
+    if (!game) return null;
+
+    return {
         id: game.id,
 
         phase: game.phase,
@@ -2763,89 +1349,80 @@ function publicGameState() {
 
         winner: game.winner,
 
-        winReason: game.winReason,
+        players: game.players.map(player => ({
+            id: player.id,
+            name: player.name,
+            color: player.color,
+            personality: player.personality,
 
-        meetingTimer:
-            Math.max(
-                0,
-                game.meetingTimer
-            ),
+            alive: player.alive,
 
-        lastMeeting:
-            game.lastMeeting,
+            x: player.x,
+            y: player.y,
 
-        bodies:
-            game.bodies.map(body => ({
-                id: body.id,
-                victimId: body.victimId,
-                x: body.x,
-                y: body.y,
-                room: body.room
-            })),
+            room: player.room,
+
+            currentTask:
+                player.currentTask
+                    ? player.currentTask.name
+                    : null,
+
+            tasksCompleted:
+                player.tasksCompleted,
+
+            tasksTotal:
+                player.tasksTotal,
+
+            action: player.action
+        })),
+
+        bodies: game.bodies.map(body => ({
+            id: body.id,
+            playerId: body.playerId,
+            name: body.name,
+            color: body.color,
+            x: body.x,
+            y: body.y,
+            room: body.room,
+            reported: body.reported
+        })),
+
+        meeting: game.meeting
+            ? {
+                reason: game.meeting.reason,
+                callerId: game.meeting.callerId,
+                callerName: game.meeting.callerName,
+                startedAt: game.meeting.startedAt,
+                discussionEndsAt:
+                    game.meeting.discussionEndsAt,
+                votingEndsAt:
+                    game.meeting.votingEndsAt,
+
+                chat:
+                    game.meeting.chat.map(message => ({
+                        playerId: message.playerId,
+                        name: message.name,
+                        text: message.text,
+                        time: message.time
+                    })),
+
+                votes:
+                    game.meeting.votes
+            }
+            : null,
 
         events:
-            game.events.slice(-20),
-
-        chat:
-            game.chat.slice(-40),
-
-        players:
-            game.players.map(player => ({
-
-                id: player.id,
-
-                name: player.name,
-
-                color: player.color,
-
-                personality:
-                    player.personality,
-
-                alive: player.alive,
-
-                x: player.x,
-
-                y: player.y,
-
-                room: player.room,
-
-                action: player.action,
-
-                state: player.state,
-
-                tasksCompleted:
-                    player.tasksCompleted,
-
-                tasksTotal:
-                    player.tasksTotal,
-
-                tasks:
-                    player.tasks.map(task => ({
-                        id: task.id,
-                        name: task.name,
-                        room: task.room,
-                        x: task.x,
-                        y: task.y,
-                        completed:
-                            task.completed
-                    }))
-            }))
+            game.events.slice(-30)
     };
 }
-
-// ============================================================
-// API
-// ============================================================
 
 app.get(
     "/api/status",
     (req, res) => {
-
         res.json({
             online: true,
-            game: game
-                ? game.id
-                : null
+            gameId: game?.id || null,
+            phase: game?.phase || null
         });
     }
 );
@@ -2853,7 +1430,6 @@ app.get(
 app.get(
     "/api/game",
     (req, res) => {
-
         res.json(
             publicGameState()
         );
@@ -2863,7 +1439,6 @@ app.get(
 app.post(
     "/api/game/new",
     (req, res) => {
-
         createGame();
 
         res.json(
@@ -2872,32 +1447,13 @@ app.post(
     }
 );
 
-// Debug endpoint.
-// Does NOT expose roles publicly.
-app.get(
-    "/api/map",
-    (req, res) => {
-
-        res.json({
-            world: WORLD,
-            rooms,
-            tasks: taskDefinitions
-        });
-    }
-);
-
-// ============================================================
-// START
-// ============================================================
-
-createGame();
-
 app.listen(
     PORT,
     () => {
-
         console.log(
             `AI Among Us running on port ${PORT}`
         );
+
+        createGame();
     }
 );
