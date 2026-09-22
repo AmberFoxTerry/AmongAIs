@@ -1,0 +1,57 @@
+* {
+  box-sizing: border-box;
+  }
+
+body {
+margin: 0;
+min-height: 100vh;
+background: #0b0b0f;
+color: #ffffff;
+font-family: Arial, sans-serif;
+display: flex;
+justify-content: center;
+align-items: center;
+}
+
+#game {
+width: min(1100px, 95vw);
+min-height: 700px;
+background: #15151c;
+border: 2px solid #30303a;
+border-radius: 12px;
+padding: 20px;
+}
+
+h1 {
+margin-top: 0;
+text-align: center;
+}
+
+#status {
+text-align: center;
+color: #aaa;
+margin-bottom: 20px;
+}
+
+#crew {
+display: grid;
+grid-template-columns: repeat(5, 1fr);
+gap: 12px;
+}
+
+.crew-member {
+padding: 15px;
+background: #202029;
+border: 1px solid #353542;
+border-radius: 8px;
+}
+
+.crew-member .name {
+font-weight: bold;
+}
+
+.crew-member .info {
+margin-top: 8px;
+color: #aaa;
+font-size: 14px;
+}
