@@ -3,17 +3,938 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Murder Camp</title>
 
-    <title>AI Among Us</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-    <link rel="stylesheet" href="style.css">
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            image-rendering: pixelated;
+        }
+    </style>
 </head>
 
 <body>
+<canvas id="game"></canvas>
 
-    <canvas id="map"></canvas>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-    <script src="game.js"></script>
+let width = 0;
+let height = 0;
+
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+
+// ============================================================
+// WORLD
+// ============================================================
+
+const TILE = 48;
+
+const world = {
+    width: 80,
+    height: 80
+};
+
+const tiles = [];
+
+for (let y = 0; y < world.height; y++) {
+    tiles[y] = [];
+
+    for (let x = 0; x < world.width; x++) {
+        tiles[y][x] = 0;
+    }
+}
+
+// 0 = grass
+// 1 = path
+// 2 = hut wall
+// 3 = hut floor
+// 4 = door
+// 5 = tree
+
+
+// ============================================================
+// HUTS
+// ============================================================
+
+const hutPositions = [];
+
+function makeHut(x, y) {
+    const hutWidth = 7;
+    const hutHeight = 6;
+
+    for (let yy = 0; yy < hutHeight; yy++) {
+        for (let xx = 0; xx < hutWidth; xx++) {
+            const wx = x + xx;
+            const wy = y + yy;
+
+            if (
+                wx < 0 ||
+                wy < 0 ||
+                wx >= world.width ||
+                wy >= world.height
+            ) {
+                continue;
+            }
+
+            const outer =
+                xx === 0 ||
+                xx === hutWidth - 1 ||
+                yy === 0 ||
+                yy === hutHeight - 1;
+
+            tiles[wy][wx] = outer ? 2 : 3;
+        }
+    }
+
+    // Door ALWAYS faces down.
+    const doorX = x + Math.floor(hutWidth / 2);
+    const doorY = y + hutHeight - 1;
+
+    tiles[doorY][doorX] = 4;
+
+    hutPositions.push({
+        x,
+        y,
+        width: hutWidth,
+        height: hutHeight,
+        doorX,
+        doorY
+    });
+}
+
+
+// Dense camp
+const columns = 6;
+const rows = 5;
+
+const spacingX = 11;
+const spacingY = 10;
+
+const startX = 9;
+const startY = 8;
+
+for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+        makeHut(
+            startX + col * spacingX,
+            startY + row * spacingY
+        );
+    }
+}
+
+
+// ============================================================
+// PROPER CAMP PATHS
+// ============================================================
+
+// Main horizontal paths
+const horizontalPaths = [14, 24, 34, 44];
+
+for (const y of horizontalPaths) {
+    for (let x = 3; x < world.width - 3; x++) {
+        if (tiles[y][x] === 0) {
+            tiles[y][x] = 1;
+        }
+    }
+}
+
+// Main vertical paths
+const verticalPaths = [14, 25, 36, 47, 58];
+
+for (const x of verticalPaths) {
+    for (let y = 3; y < world.height - 3; y++) {
+        if (tiles[y][x] === 0) {
+            tiles[y][x] = 1;
+        }
+    }
+}
+
+
+// Connect every hut door to the nearest path.
+// This gives the camp actual walkways instead of random stripes.
+
+for (const hut of hutPositions) {
+    let x = hut.doorX;
+    let y = hut.doorY + 1;
+
+    while (y < world.height && tiles[y][x] !== 1) {
+        if (tiles[y][x] === 0) {
+            tiles[y][x] = 1;
+        }
+
+        y++;
+    }
+}
+
+
+// ============================================================
+// FOREST EDGE
+// ============================================================
+
+function placeTree(x, y) {
+    if (
+        x < 0 ||
+        y < 0 ||
+        x >= world.width ||
+        y >= world.height
+    ) {
+        return;
+    }
+
+    // Don't overwrite camp buildings.
+    if (tiles[y][x] !== 0) {
+        return;
+    }
+
+    tiles[y][x] = 5;
+}
+
+
+// Thick forest around the outside.
+for (let x = 0; x < world.width; x++) {
+    for (let depth = 0; depth < 4; depth++) {
+        if (Math.random() < 0.8) {
+            placeTree(x, depth);
+        }
+
+        if (Math.random() < 0.8) {
+            placeTree(x, world.height - 1 - depth);
+        }
+    }
+}
+
+for (let y = 0; y < world.height; y++) {
+    for (let depth = 0; depth < 4; depth++) {
+        if (Math.random() < 0.8) {
+            placeTree(depth, y);
+        }
+
+        if (Math.random() < 0.8) {
+            placeTree(world.width - 1 - depth, y);
+        }
+    }
+}
+
+
+// ============================================================
+// PLAYER
+// ============================================================
+
+const player = {
+    x: 40 * TILE + TILE / 2,
+    y: 55 * TILE + TILE / 2,
+
+    radius: 13,
+    speed: 230
+};
+
+
+// ============================================================
+// INPUT
+// ============================================================
+
+const keys = {};
+
+window.addEventListener("keydown", event => {
+    keys[event.key.toLowerCase()] = true;
+
+    if (
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown" ||
+        event.key === "ArrowLeft" ||
+        event.key === "ArrowRight" ||
+        event.key === " "
+    ) {
+        event.preventDefault();
+    }
+});
+
+window.addEventListener("keyup", event => {
+    keys[event.key.toLowerCase()] = false;
+});
+
+
+// ============================================================
+// COLLISION
+// ============================================================
+
+function isSolidTile(tx, ty) {
+    if (
+        tx < 0 ||
+        ty < 0 ||
+        tx >= world.width ||
+        ty >= world.height
+    ) {
+        return true;
+    }
+
+    return (
+        tiles[ty][tx] === 2 ||
+        tiles[ty][tx] === 5
+    );
+}
+
+function collides(x, y) {
+    const r = player.radius;
+
+    const points = [
+        [x - r, y - r],
+        [x + r, y - r],
+        [x - r, y + r],
+        [x + r, y + r],
+        [x, y - r],
+        [x, y + r],
+        [x - r, y],
+        [x + r, y]
+    ];
+
+    for (const [px, py] of points) {
+        const tx = Math.floor(px / TILE);
+        const ty = Math.floor(py / TILE);
+
+        if (isSolidTile(tx, ty)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+// ============================================================
+// MOVEMENT
+// ============================================================
+
+function updatePlayer(dt) {
+    let dx = 0;
+    let dy = 0;
+
+    if (keys["w"] || keys["arrowup"]) dy--;
+    if (keys["s"] || keys["arrowdown"]) dy++;
+    if (keys["a"] || keys["arrowleft"]) dx--;
+    if (keys["d"] || keys["arrowright"]) dx++;
+
+    if (dx !== 0 || dy !== 0) {
+        const length = Math.sqrt(dx * dx + dy * dy);
+
+        dx /= length;
+        dy /= length;
+
+        const moveX = dx * player.speed * dt;
+        const moveY = dy * player.speed * dt;
+
+        if (!collides(player.x + moveX, player.y)) {
+            player.x += moveX;
+        }
+
+        if (!collides(player.x, player.y + moveY)) {
+            player.y += moveY;
+        }
+    }
+}
+
+
+// ============================================================
+// CAMERA
+// ============================================================
+
+function getCamera() {
+    let x = player.x - width / 2;
+    let y = player.y - height / 2;
+
+    const worldWidth = world.width * TILE;
+    const worldHeight = world.height * TILE;
+
+    x = Math.max(0, Math.min(x, worldWidth - width));
+    y = Math.max(0, Math.min(y, worldHeight - height));
+
+    return { x, y };
+}
+
+
+// ============================================================
+// TEXTURES
+// ============================================================
+
+function drawGrass(x, y) {
+    ctx.fillStyle = "#58734b";
+    ctx.fillRect(x, y, TILE, TILE);
+
+    ctx.strokeStyle = "#4c6842";
+    ctx.lineWidth = 1;
+
+    const positions = [
+        [9, 14],
+        [31, 9],
+        [19, 36],
+        [39, 29],
+        [6, 42]
+    ];
+
+    for (const [gx, gy] of positions) {
+        ctx.beginPath();
+
+        ctx.moveTo(x + gx, y + gy + 4);
+        ctx.lineTo(x + gx + 2, y + gy);
+
+        ctx.moveTo(x + gx + 2, y + gy + 4);
+        ctx.lineTo(x + gx + 4, y + gy + 1);
+
+        ctx.stroke();
+    }
+}
+
+
+function drawPath(x, y) {
+    ctx.fillStyle = "#9a815d";
+    ctx.fillRect(x, y, TILE, TILE);
+
+    // Dirt texture
+    ctx.fillStyle = "#876f51";
+
+    ctx.fillRect(x + 5, y + 8, 4, 3);
+    ctx.fillRect(x + 29, y + 14, 6, 3);
+    ctx.fillRect(x + 14, y + 33, 5, 3);
+    ctx.fillRect(x + 38, y + 38, 4, 3);
+    ctx.fillRect(x + 23, y + 24, 3, 3);
+}
+
+
+function drawFloor(x, y) {
+    ctx.fillStyle = "#9b704b";
+    ctx.fillRect(x, y, TILE, TILE);
+
+    ctx.strokeStyle = "#805b3e";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(x + 5, y + 12);
+    ctx.lineTo(x + TILE - 5, y + 12);
+
+    ctx.moveTo(x + 5, y + 36);
+    ctx.lineTo(x + TILE - 5, y + 36);
+
+    ctx.stroke();
+}
+
+
+function drawWall(x, y) {
+    ctx.fillStyle = "#704a32";
+    ctx.fillRect(x, y, TILE, TILE);
+
+    ctx.fillStyle = "#80563a";
+    ctx.fillRect(x + 2, y + 2, TILE - 4, 10);
+
+    ctx.fillStyle = "#5b3c2b";
+    ctx.fillRect(x, y + TILE - 6, TILE, 6);
+
+    ctx.strokeStyle = "#513627";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(x + 12, y);
+    ctx.lineTo(x + 12, y + TILE);
+
+    ctx.moveTo(x + 36, y);
+    ctx.lineTo(x + 36, y + TILE);
+
+    ctx.stroke();
+}
+
+
+function drawDoor(x, y) {
+    ctx.fillStyle = "#4a3024";
+    ctx.fillRect(x, y, TILE, TILE);
+
+    ctx.fillStyle = "#69442d";
+
+    ctx.fillRect(
+        x + 7,
+        y + 4,
+        TILE - 14,
+        TILE - 4
+    );
+
+    ctx.fillStyle = "#c49a59";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        x + TILE - 13,
+        y + TILE / 2,
+        3,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+}
+
+
+// ============================================================
+// TREES
+// ============================================================
+
+function drawTree(x, y) {
+    // Shadow
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+
+    ctx.beginPath();
+    ctx.ellipse(
+        x + TILE / 2,
+        y + TILE - 8,
+        20,
+        8,
+        0,
+        0,
+        Math.PI * 2
+    );
+    ctx.fill();
+
+    // Trunk
+    ctx.fillStyle = "#5b3b27";
+
+    ctx.fillRect(
+        x + 20,
+        y + 25,
+        9,
+        19
+    );
+
+    // Tree crown
+    ctx.fillStyle = "#29472b";
+
+    ctx.beginPath();
+    ctx.arc(
+        x + 24,
+        y + 18,
+        18,
+        0,
+        Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "#365d35";
+
+    ctx.beginPath();
+    ctx.arc(
+        x + 15,
+        y + 22,
+        13,
+        0,
+        Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(
+        x + 32,
+        y + 21,
+        14,
+        0,
+        Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.fillStyle = "#416d3e";
+
+    ctx.beginPath();
+    ctx.arc(
+        x + 24,
+        y + 10,
+        10,
+        0,
+        Math.PI * 2
+    );
+    ctx.fill();
+}
+
+
+// ============================================================
+// HUT ROOFS
+// ============================================================
+
+function drawRoof(hut, camera) {
+    const x = hut.x * TILE - camera.x;
+    const y = hut.y * TILE - camera.y;
+
+    const w = hut.width * TILE;
+
+    ctx.fillStyle = "#51392d";
+
+    ctx.beginPath();
+
+    ctx.moveTo(x - 8, y + 12);
+    ctx.lineTo(x + w / 2, y - 22);
+    ctx.lineTo(x + w + 8, y + 12);
+    ctx.lineTo(x + w, y + 30);
+    ctx.lineTo(x, y + 30);
+
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#654536";
+    ctx.lineWidth = 3;
+
+    for (let i = 0; i < 6; i++) {
+        const px =
+            x + 10 + i * ((w - 20) / 5);
+
+        ctx.beginPath();
+        ctx.moveTo(px, y + 10);
+        ctx.lineTo(x + w / 2, y - 16);
+        ctx.stroke();
+    }
+}
+
+
+// ============================================================
+// PLAYER
+// ============================================================
+
+function drawPlayer(camera) {
+    const x = player.x - camera.x;
+    const y = player.y - camera.y;
+
+    ctx.save();
+
+    // Feet shadow
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+
+    ctx.beginPath();
+    ctx.ellipse(
+        x,
+        y + 25,
+        12,
+        5,
+        0,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    // Japanese WC-sign style person
+
+    ctx.strokeStyle = "#eeeeee";
+    ctx.lineWidth = 7;
+    ctx.lineCap = "round";
+
+    // Body
+    ctx.beginPath();
+    ctx.moveTo(x, y - 1);
+    ctx.lineTo(x, y + 13);
+    ctx.stroke();
+
+    // Arms
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y + 3);
+    ctx.lineTo(x + 12, y + 3);
+    ctx.stroke();
+
+    // Legs
+    ctx.beginPath();
+
+    ctx.moveTo(x, y + 13);
+    ctx.lineTo(x - 8, y + 25);
+
+    ctx.moveTo(x, y + 13);
+    ctx.lineTo(x + 8, y + 25);
+
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = "#eeeeee";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        x,
+        y - 13,
+        8,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// WORLD DRAWING
+// ============================================================
+
+function drawWorld(camera) {
+    const startX = Math.floor(camera.x / TILE) - 1;
+    const startY = Math.floor(camera.y / TILE) - 1;
+
+    const endX =
+        Math.ceil((camera.x + width) / TILE) + 1;
+
+    const endY =
+        Math.ceil((camera.y + height) / TILE) + 1;
+
+
+    // Ground
+    for (let ty = startY; ty < endY; ty++) {
+        for (let tx = startX; tx < endX; tx++) {
+
+            if (
+                tx < 0 ||
+                ty < 0 ||
+                tx >= world.width ||
+                ty >= world.height
+            ) {
+                continue;
+            }
+
+            const screenX = tx * TILE - camera.x;
+            const screenY = ty * TILE - camera.y;
+
+            const tile = tiles[ty][tx];
+
+            if (tile === 0) {
+                drawGrass(screenX, screenY);
+            }
+            else if (tile === 1) {
+                drawPath(screenX, screenY);
+            }
+            else if (tile === 2) {
+                drawWall(screenX, screenY);
+            }
+            else if (tile === 3) {
+                drawFloor(screenX, screenY);
+            }
+            else if (tile === 4) {
+                drawDoor(screenX, screenY);
+            }
+            else if (tile === 5) {
+                drawGrass(screenX, screenY);
+                drawTree(screenX, screenY);
+            }
+        }
+    }
+
+
+    // Roofs
+    for (const hut of hutPositions) {
+
+        const hutCenterX =
+            (hut.x + hut.width / 2) * TILE;
+
+        const hutCenterY =
+            (hut.y + hut.height / 2) * TILE;
+
+        const distance = Math.hypot(
+            player.x - hutCenterX,
+            player.y - hutCenterY
+        );
+
+        if (distance < Math.max(width, height) * 0.8) {
+            drawRoof(hut, camera);
+        }
+    }
+}
+
+
+// ============================================================
+// VISION / FOG
+// ============================================================
+
+function hasLineOfSight(x1, y1, x2, y2) {
+    const distance = Math.hypot(
+        x2 - x1,
+        y2 - y1
+    );
+
+    const steps = Math.ceil(distance / 12);
+
+    for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+
+        const x = x1 + (x2 - x1) * t;
+        const y = y1 + (y2 - y1) * t;
+
+        const tx = Math.floor(x / TILE);
+        const ty = Math.floor(y / TILE);
+
+        if (
+            tx < 0 ||
+            ty < 0 ||
+            tx >= world.width ||
+            ty >= world.height
+        ) {
+            return false;
+        }
+
+        // Walls and trees block vision.
+        if (
+            tiles[ty][tx] === 2 ||
+            tiles[ty][tx] === 5
+        ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+function drawVision() {
+    const visionRadius = 9 * TILE;
+
+    // Everything starts black.
+    ctx.save();
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, width, height);
+
+    // Reveal visible tiles using destination-out.
+    ctx.globalCompositeOperation = "destination-out";
+
+    const camera = getCamera();
+
+    const minX = Math.floor(
+        (player.x - visionRadius) / TILE
+    );
+
+    const maxX = Math.ceil(
+        (player.x + visionRadius) / TILE
+    );
+
+    const minY = Math.floor(
+        (player.y - visionRadius) / TILE
+    );
+
+    const maxY = Math.ceil(
+        (player.y + visionRadius) / TILE
+    );
+
+    for (let ty = minY; ty <= maxY; ty++) {
+        for (let tx = minX; tx <= maxX; tx++) {
+
+            if (
+                tx < 0 ||
+                ty < 0 ||
+                tx >= world.width ||
+                ty >= world.height
+            ) {
+                continue;
+            }
+
+            const tileCenterX =
+                tx * TILE + TILE / 2;
+
+            const tileCenterY =
+                ty * TILE + TILE / 2;
+
+            const distance = Math.hypot(
+                tileCenterX - player.x,
+                tileCenterY - player.y
+            );
+
+            if (distance > visionRadius) {
+                continue;
+            }
+
+            if (
+                !hasLineOfSight(
+                    player.x,
+                    player.y,
+                    tileCenterX,
+                    tileCenterY
+                )
+            ) {
+                continue;
+            }
+
+            const screenX =
+                tx * TILE - camera.x;
+
+            const screenY =
+                ty * TILE - camera.y;
+
+            ctx.fillStyle = "white";
+
+            ctx.fillRect(
+                screenX,
+                screenY,
+                TILE + 1,
+                TILE + 1
+            );
+        }
+    }
+
+    ctx.restore();
+}
+
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+
+let lastTime = performance.now();
+
+function gameLoop(now) {
+    const dt = Math.min(
+        (now - lastTime) / 1000,
+        0.05
+    );
+
+    lastTime = now;
+
+    updatePlayer(dt);
+
+    const camera = getCamera();
+
+    ctx.clearRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+    drawWorld(camera);
+
+    // Black vision mask
+    drawVision();
+
+    // Player is always visible.
+    drawPlayer(camera);
+
+    requestAnimationFrame(gameLoop);
+}
+
+requestAnimationFrame(gameLoop);
+</script>
 
 </body>
 </html>
